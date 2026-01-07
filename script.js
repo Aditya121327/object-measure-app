@@ -6,13 +6,17 @@ const result = document.getElementById("result");
 
 let cvReady = false;
 
-// OpenCV ready
-cv.onRuntimeInitialized = () => {
-  cvReady = true;
-  console.log("OpenCV ready");
-};
+// -------- FORCE OPENCV READY CHECK --------
+function waitForOpenCV(callback) {
+  if (typeof cv !== "undefined" && cv.Mat) {
+    cvReady = true;
+    callback();
+  } else {
+    setTimeout(() => waitForOpenCV(callback), 100);
+  }
+}
 
-// Start camera
+// -------- CAMERA --------
 navigator.mediaDevices.getUserMedia({
   video: { facingMode: "environment" },
   audio: false
@@ -24,27 +28,24 @@ navigator.mediaDevices.getUserMedia({
   alert("Camera error: " + err.message);
 });
 
-// Capture + analyze
-captureBtn.addEventListener("click", () => {
-  if (!cvReady) {
-    alert("OpenCV still loading. Wait 2 seconds.");
-    return;
-  }
+// -------- CAPTURE --------
+captureBtn.onclick = () => {
+  result.innerText = "Captured image. Initializing analysis...";
 
-  // Capture frame
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  // Show captured image
   canvas.style.display = "block";
   video.style.display = "none";
 
-  analyzeImage();
-});
+  waitForOpenCV(analyzeImage);
+};
 
 // -------- ANALYSIS --------
 function analyzeImage() {
+  result.innerText = "Running OpenCV analysis...";
+
   let src = cv.imread(canvas);
   let gray = new cv.Mat();
   let blur = new cv.Mat();
@@ -58,13 +59,15 @@ function analyzeImage() {
   let hierarchy = new cv.Mat();
   cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
+  result.innerText = `Contours detected: ${contours.size()}`;
+
   if (contours.size() < 2) {
-    result.innerText = "A4 sheet or object not detected clearly";
+    result.innerText = "Not enough contours. Ensure A4 + object are visible.";
     cleanup(src, gray, blur, edges, contours, hierarchy);
     return;
   }
 
-  // Store contours with area
+  // Collect contour areas
   let contourData = [];
   for (let i = 0; i < contours.size(); i++) {
     let rect = cv.boundingRect(contours.get(i));
@@ -72,37 +75,35 @@ function analyzeImage() {
     contourData.push({ rect, area });
   }
 
-  // Sort by area
+  // Sort descending
   contourData.sort((a, b) => b.area - a.area);
 
-  let a4Rect = contourData[0].rect;   // largest
-  let objectRect = contourData[1].rect; // second largest
+  let a4Rect = contourData[0].rect;
+  let objectRect = contourData[1].rect;
 
-  // Calibration using A4 (29.7 cm)
+  // Calibration
   let referencePixels = Math.max(a4Rect.width, a4Rect.height);
   let pixelsPerCm = referencePixels / 29.7;
 
   let widthCm = (objectRect.width / pixelsPerCm).toFixed(2);
   let heightCm = (objectRect.height / pixelsPerCm).toFixed(2);
 
-  // Shape detection
-  let shape = "Irregular";
-  if (Math.abs(objectRect.width - objectRect.height) < 30) {
-    shape = "Square / Circle";
-  } else {
-    shape = "Rectangle";
-  }
+  let shape =
+    Math.abs(objectRect.width - objectRect.height) < 30
+      ? "Square / Circle"
+      : "Rectangle";
 
   result.innerText =
-`Reference: A4 Sheet
+`Reference detected: A4 sheet
+Contours found: ${contours.size()}
 Detected Shape: ${shape}
-Width: ${widthCm} cm
-Height: ${heightCm} cm`;
+Object Width: ${widthCm} cm
+Object Height: ${heightCm} cm`;
 
   cleanup(src, gray, blur, edges, contours, hierarchy);
 }
 
-// Cleanup memory
+// -------- CLEANUP --------
 function cleanup(...mats) {
   mats.forEach(m => m.delete());
 }
