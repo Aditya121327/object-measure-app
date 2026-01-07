@@ -57,40 +57,75 @@ function analyzeImage() {
   let hierarchy = new cv.Mat();
   cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-  let referencePixels = null;
+  let a4Rect = null;
+  let a4Area = 0;
+
+  // STEP 1: Detect A4 sheet
+  for (let i = 0; i < contours.size(); i++) {
+    let cnt = contours.get(i);
+    let rect = cv.boundingRect(cnt);
+    let area = rect.width * rect.height;
+
+    let aspectRatio = rect.width / rect.height;
+
+    // A4 aspect ratio ≈ 1 : 1.414
+    if (
+      area > 30000 &&
+      (aspectRatio > 0.65 && aspectRatio < 0.8 ||
+       aspectRatio > 1.3 && aspectRatio < 1.6)
+    ) {
+      if (area > a4Area) {
+        a4Area = area;
+        a4Rect = rect;
+      }
+    }
+  }
+
+  if (!a4Rect) {
+    result.innerText = "A4 sheet not detected";
+    cleanup(src, gray, blur, edges);
+    return;
+  }
+
+  // STEP 2: Detect object (largest contour EXCLUDING A4)
   let objectRect = null;
-  let maxArea = 0;
+  let objectArea = 0;
 
   for (let i = 0; i < contours.size(); i++) {
     let cnt = contours.get(i);
     let rect = cv.boundingRect(cnt);
     let area = rect.width * rect.height;
 
-    // A4 sheet detection (large rectangular object)
-    if (area > 30000 && rect.width > 100 && rect.height > 150) {
-      referencePixels = Math.max(rect.width, rect.height); // longer side
+    // Ignore A4 area
+    if (
+      rect.x === a4Rect.x &&
+      rect.y === a4Rect.y &&
+      rect.width === a4Rect.width &&
+      rect.height === a4Rect.height
+    ) {
+      continue;
     }
 
-    // Detect largest object (excluding reference)
-    if (area > maxArea) {
-      maxArea = area;
+    if (area > objectArea) {
+      objectArea = area;
       objectRect = rect;
     }
   }
 
-  if (!referencePixels || !objectRect) {
-    result.innerText = "A4 sheet or object not detected properly";
+  if (!objectRect) {
+    result.innerText = "Object not detected";
     cleanup(src, gray, blur, edges);
     return;
   }
 
-  // A4 sheet long side = 29.7 cm
+  // STEP 3: Measurement using A4 (29.7 cm)
+  let referencePixels = Math.max(a4Rect.width, a4Rect.height);
   let pixelsPerCm = referencePixels / 29.7;
 
   let widthCm = (objectRect.width / pixelsPerCm).toFixed(2);
   let heightCm = (objectRect.height / pixelsPerCm).toFixed(2);
 
-  // Shape detection
+  // STEP 4: Shape detection
   let shape = "Irregular";
   if (Math.abs(objectRect.width - objectRect.height) < 30) {
     shape = "Square / Circle";
@@ -101,12 +136,8 @@ function analyzeImage() {
   result.innerText =
 `Reference: A4 Sheet
 Detected Shape: ${shape}
-Width: ${widthCm} cm
-Height: ${heightCm} cm`;
+Object Width: ${widthCm} cm
+Object Height: ${heightCm} cm`;
 
   cleanup(src, gray, blur, edges);
-}
-
-function cleanup(...mats) {
-  mats.forEach(m => m.delete());
 }
