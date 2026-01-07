@@ -1,5 +1,3 @@
-alert("script.js loaded");
-
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -12,20 +10,23 @@ navigator.mediaDevices.getUserMedia({
 })
 .then(stream => {
   video.srcObject = stream;
-  alert("Camera started");
 })
 .catch(err => {
   alert("Camera error: " + err.message);
 });
 
-// Capture button test
+// Capture image
 captureBtn.addEventListener("click", () => {
-  alert("Capture button clicked");
-
+  // Set real canvas resolution
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 
+  // Draw frame
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  alert("Image drawn to canvas");
+  // Show canvas, hide video
+  canvas.style.display = "block";
+  video.style.display = "none";
+
+  alert("Image captured and displayed");
 });
