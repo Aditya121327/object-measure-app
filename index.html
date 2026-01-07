@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Accurate Object Measurement</title>
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <style>
+    body { font-family: Arial; text-align: center; }
+    video, canvas { width: 90%; max-width: 400px; border: 2px solid black; }
+    button { padding: 10px; font-size: 16px; margin: 10px; }
+  </style>
+</head>
+<body>
+
+<h2>Accurate Object Measurement & Shape Detection</h2>
+<p>Place a credit card next to the object</p>
+
+<video id="video" autoplay playsinline></video><br>
+<button onclick="capture()">Capture</button>
+<canvas id="canvas"></canvas>
+<p id="output"></p>
+
+<script src="script.js"></script>
+</body>
+</html>
+
