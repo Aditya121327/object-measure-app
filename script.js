@@ -19,7 +19,7 @@ async function startCamera() {
       audio: false
     });
     video.srcObject = stream;
-  } catch (err) {
+  } catch {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: true,
       audio: false
@@ -30,10 +30,10 @@ async function startCamera() {
 
 startCamera();
 
-// Capture and analyze
+// Capture & analyze
 document.getElementById("capture").onclick = () => {
   if (!cvReady) {
-    alert("OpenCV is still loading. Please wait 2 seconds and try again.");
+    alert("OpenCV is still loading. Please wait 2 seconds.");
     return;
   }
 
@@ -59,47 +59,54 @@ function analyzeImage() {
 
   let referencePixels = null;
   let objectRect = null;
+  let maxArea = 0;
 
   for (let i = 0; i < contours.size(); i++) {
     let cnt = contours.get(i);
     let rect = cv.boundingRect(cnt);
     let area = rect.width * rect.height;
 
-    // Detect credit card (reference object)
-    if (area > 5000 && rect.width > rect.height) {
-      referencePixels = rect.width;
+    // A4 sheet detection (large rectangular object)
+    if (area > 30000 && rect.width > 100 && rect.height > 150) {
+      referencePixels = Math.max(rect.width, rect.height); // longer side
     }
 
-    // Largest contour assumed as object
-    if (!objectRect || area > objectRect.width * objectRect.height) {
+    // Detect largest object (excluding reference)
+    if (area > maxArea) {
+      maxArea = area;
       objectRect = rect;
     }
   }
 
   if (!referencePixels || !objectRect) {
-    result.innerText = "Reference card or object not detected properly";
-    src.delete(); gray.delete(); blur.delete(); edges.delete();
+    result.innerText = "A4 sheet or object not detected properly";
+    cleanup(src, gray, blur, edges);
     return;
   }
 
-  // Credit card width = 8.56 cm
-  let pixelsPerCm = referencePixels / 8.56;
+  // A4 sheet long side = 29.7 cm
+  let pixelsPerCm = referencePixels / 29.7;
 
   let widthCm = (objectRect.width / pixelsPerCm).toFixed(2);
   let heightCm = (objectRect.height / pixelsPerCm).toFixed(2);
 
   // Shape detection
   let shape = "Irregular";
-  if (Math.abs(objectRect.width - objectRect.height) < 20) {
+  if (Math.abs(objectRect.width - objectRect.height) < 30) {
     shape = "Square / Circle";
   } else {
     shape = "Rectangle";
   }
 
   result.innerText =
-`Detected Shape: ${shape}
+`Reference: A4 Sheet
+Detected Shape: ${shape}
 Width: ${widthCm} cm
 Height: ${heightCm} cm`;
 
-  src.delete(); gray.delete(); blur.delete(); edges.delete();
+  cleanup(src, gray, blur, edges);
+}
+
+function cleanup(...mats) {
+  mats.forEach(m => m.delete());
 }
