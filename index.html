@@ -1,17 +1,25 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Object Measure App</title>
+  <title>Object Measurement & Shape Detection</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 </head>
-<body>
 
-  <h2>Object Measurement</h2>
+<body style="text-align:center; font-family:Arial">
 
-  <video id="video" autoplay playsinline style="width:100%;"></video>
+  <h2>Object Measurement & Shape Detection</h2>
+  <p>Place a credit card next to the object</p>
+
+  <video id="video" autoplay playsinline style="width:100%; max-width:400px;"></video>
   <br><br>
-  <button id="capture">Capture Photo</button>
 
-  <canvas id="canvas" style="display:none;"></canvas>
+  <button id="capture">Capture & Analyze</button>
+  <br><br>
+
+  <canvas id="canvas" style="width:100%; max-width:400px;"></canvas>
+
+  <p id="result" style="font-size:18px; font-weight:bold;"></p>
 
   <script src="script.js"></script>
 </body>
