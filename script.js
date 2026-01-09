@@ -19,6 +19,17 @@ navigator.mediaDevices.getUserMedia({
 // STEP 2: Capture image when button is clicked
 captureButton.addEventListener("click", () => {
 
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  canvas.style.display = "block";
+  video.style.display = "none";
+
+  // TEMP: show fake measurement
+  fakeMeasurement();
+});
+
   // Set canvas size same as video
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
@@ -30,3 +41,13 @@ captureButton.addEventListener("click", () => {
   canvas.style.display = "block";
   video.style.display = "none";
 });
+
+const result = document.getElementById("result");
+
+// TEMPORARY: simulate measurement
+function fakeMeasurement() {
+  result.innerText =
+    "Object Width: 20 cm\nObject Height: 12 cm";
+}
+
+
