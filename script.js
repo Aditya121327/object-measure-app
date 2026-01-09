@@ -1,12 +1,13 @@
-// Get elements from HTML
+// Get elements
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const captureButton = document.getElementById("capture");
+const result = document.getElementById("result");
 const ctx = canvas.getContext("2d");
 
-// STEP 1: Open the phone camera
+// STEP 1: Open phone camera (BACK camera)
 navigator.mediaDevices.getUserMedia({
-  video: { facingMode: "environment" }, // back camera
+  video: { facingMode: "environment" },
   audio: false
 })
 .then(stream => {
@@ -16,38 +17,27 @@ navigator.mediaDevices.getUserMedia({
   alert("Camera error: " + error.message);
 });
 
-// STEP 2: Capture image when button is clicked
+// STEP 2: Capture image
 captureButton.addEventListener("click", () => {
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  canvas.style.display = "block";
-  video.style.display = "none";
-
-  // TEMP: show fake measurement
-  fakeMeasurement();
-});
-
-  // Set canvas size same as video
+  // Set canvas size
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 
-  // Draw current video frame on canvas
+  // Draw image on canvas
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  // Show captured image
+  // Show canvas, hide video
   canvas.style.display = "block";
   video.style.display = "none";
+
+  // TEMPORARY measurement (FAKE)
+  showFakeMeasurement();
 });
 
-const result = document.getElementById("result");
-
-// TEMPORARY: simulate measurement
-function fakeMeasurement() {
+// STEP 3: Fake measurement (for testing flow)
+function showFakeMeasurement() {
   result.innerText =
-    "Object Width: 20 cm\nObject Height: 12 cm";
+    "Object Width: 20 cm\n" +
+    "Object Height: 12 cm";
 }
-
-
