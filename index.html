@@ -1,38 +1,42 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Camera Capture App</title>
+  <title>Smart Wrapping Assistant</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- OpenCV -->
+  <script src="https://docs.opencv.org/4.x/opencv.js"></script>
 </head>
 
 <body style="text-align:center; font-family:Arial">
 
-  <h2>Camera Capture</h2>
+  <h2>Smart Wrapping Assistant</h2>
+  <p>Place the object on an A4 sheet</p>
 
-  <!-- Camera preview -->
-  <video id="video" autoplay playsinline
-         style="width:100%; max-width:400px; border:2px solid black;">
+  <!-- Live Camera -->
+  <video
+    id="video"
+    autoplay
+    playsinline
+    style="width:100%; max-width:400px; border:2px solid black;">
   </video>
 
   <br><br>
 
-  <!-- Capture button -->
-  <button id="capture">Capture Photo</button>
+  <!-- Capture Button -->
+  <button id="capture">Capture & Measure</button>
 
   <br><br>
 
-  <!-- Captured image -->
-  <canvas id="canvas"
-          style="display:none; width:100%; max-width:400px; border:2px solid red;">
+  <!-- Captured Image -->
+  <canvas
+    id="canvas"
+    style="display:none; width:100%; max-width:400px; border:2px solid red;">
   </canvas>
-  
-  <br><br>
-  
-  <p id="result" style="font-size:18px; font-weight:bold;"></p>
 
+  <!-- Result -->
+  <p id="result" style="font-size:18px; font-weight:bold;"></p>
 
   <script src="script.js"></script>
 </body>
 </html>
-
-
