@@ -1,34 +1,35 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Object Measurement & Shape Detection</title>
+  <title>Camera Capture App</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://docs.opencv.org/4.x/opencv.js"></script>
-
 </head>
 
 <body style="text-align:center; font-family:Arial">
 
-  <h2>Object Measurement & Shape Detection</h2>
-  <p>Place an A4 sheet next to the object</p>
+  <h2>Camera Capture</h2>
 
+  <!-- Camera preview -->
+  <video id="video" autoplay playsinline
+         style="width:100%; max-width:400px; border:2px solid black;">
+  </video>
 
-  <video id="video" autoplay playsinline style="width:100%; max-width:400px;"></video>
   <br><br>
 
-  <button id="capture">Capture & Analyze</button>
+  <!-- Capture button -->
+  <button id="capture">Capture Photo</button>
+
   <br><br>
 
+  <!-- Captured image -->
   <canvas id="canvas"
-        style="display:none; width:100%; max-width:400px; border:2px solid red;">
-</canvas>
-
-
-  <p id="result" style="font-size:18px; font-weight:bold;"></p>
+          style="display:none; width:100%; max-width:400px; border:2px solid red;">
+  </canvas>
 
   <script src="script.js"></script>
 </body>
 </html>
+
 
 
 
