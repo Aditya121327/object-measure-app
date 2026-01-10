@@ -5,15 +5,11 @@ body {
   background: #f7f7f7;
 }
 
-h2 {
-  margin-bottom: 6px;
-}
-
 .note {
   font-size: 14px;
-  opacity: 0.9;
   max-width: 420px;
-  margin: 6px auto 14px auto;
+  margin: 10px auto 12px auto;
+  opacity: 0.9;
 }
 
 video, canvas {
@@ -40,6 +36,11 @@ button {
   background: #007bff;
   color: white;
   cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 button:active {
