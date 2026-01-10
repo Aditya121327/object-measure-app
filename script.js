@@ -9,22 +9,24 @@ const resetBtn = document.getElementById("reset");
 const result = document.getElementById("result");
 const instructions = document.getElementById("instructions");
 
-const MARKER_SIZE_CM = 5.0; // printed marker size in cm
+// Marker real size in cm (IMPORTANT: your printed marker must be 5cm x 5cm)
+const MARKER_SIZE_CM = 5.0;
 
 let L = null, W = null, H = null;
 
-// ---------------- CAMERA ----------------
+// ---------------- CAMERA START ----------------
 navigator.mediaDevices.getUserMedia({
   video: { facingMode: "environment" },
   audio: false
 })
-.then(stream => video.srcObject = stream)
-.catch(err => alert("Camera error: " + err.message));
+.then(stream => {
+  video.srcObject = stream;
+})
+.catch(err => {
+  alert("Camera error: " + err.message);
+});
 
-// ---------------- BUTTONS ----------------
-captureTopBtn.onclick = () => captureAndProcess("top");
-captureSideBtn.onclick = () => captureAndProcess("side");
-
+// ---------------- RESET ----------------
 resetBtn.onclick = () => {
   L = W = H = null;
   result.innerText = "";
@@ -35,206 +37,177 @@ resetBtn.onclick = () => {
   captureSideBtn.disabled = true;
 
   instructions.innerText =
-    "STEP 1: Place object + marker (5cm) and capture TOP view.";
+    "STEP 1: Place object + ArUco marker (5cm) and capture TOP view.";
 };
 
-// ---------------- MAIN CAPTURE ----------------
+// ---------------- BUTTONS ----------------
+captureTopBtn.onclick = () => captureAndProcess("top");
+captureSideBtn.onclick = () => captureAndProcess("side");
+
+// ---------------- CAPTURE ----------------
 function captureAndProcess(mode) {
+  // take photo from video
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+  // show captured
   video.style.display = "none";
   canvas.style.display = "block";
 
   result.innerText = `Processing ${mode.toUpperCase()} view...`;
 
   waitForOpenCV(() => {
-    const measurement = measureUsingMarker(mode);
+    // 1) detect marker scale using js-aruco
+    const pixelsPerCm = detectMarkerScaleUsingJsAruco();
 
-    if (!measurement) return;
+    if (!pixelsPerCm) {
+      result.innerText =
+        "❌ ArUco marker not detected clearly.\nKeep marker near object, fully visible, good lighting.";
+      return;
+    }
+
+    // 2) detect object size using OpenCV
+    const measured = detectObjectSize(pixelsPerCm);
+
+    if (!measured.wCm || !measured.hCm) {
+      result.innerText = "❌ Object not detected clearly.";
+      return;
+    }
+
+    // width/height from object in this photo
+    const longSide = Math.max(measured.wCm, measured.hCm);
+    const shortSide = Math.min(measured.wCm, measured.hCm);
 
     if (mode === "top") {
-      L = measurement.longSide;
-      W = measurement.shortSide;
+      // TOP photo provides L and W
+      L = longSide.toFixed(2);
+      W = shortSide.toFixed(2);
 
       result.innerText =
-        `✅ TOP View Complete\nLength: ${L} cm\nWidth: ${W} cm\n\nNow take SIDE photo.`;
+        `✅ TOP View Done\nLength: ${L} cm\nWidth: ${W} cm\n\nNow capture SIDE view.`;
 
       instructions.innerText =
-        "STEP 2: Place marker beside object (SIDE view) and capture SIDE view.";
+        "STEP 2: Capture SIDE view with marker visible (marker beside object).";
 
       captureTopBtn.disabled = true;
       captureSideBtn.disabled = false;
 
     } else {
-      H = measurement.longSide;
+      // SIDE photo provides H
+      H = longSide.toFixed(2);
 
       result.innerText =
         `✅ FINAL MEASUREMENT\nLength: ${L} cm\nWidth : ${W} cm\nHeight: ${H} cm`;
 
       instructions.innerText =
-        "✅ Done! Next we will calculate wrapping paper + fold/tape guide.";
+        "✅ Measurement complete. Next step: wrapping paper & fold guide.";
 
       captureSideBtn.disabled = true;
     }
   });
 }
 
-// ---------------- OPENCV READY ----------------
+// ---------------- WAIT FOR OPENCV ----------------
 function waitForOpenCV(cb) {
   if (typeof cv !== "undefined" && cv.Mat) cb();
   else setTimeout(() => waitForOpenCV(cb), 100);
 }
 
-// ---------------- MEASUREMENT CORE ----------------
-function measureUsingMarker(mode) {
+// ======================================================
+// ✅ 1) MARKER SCALE USING js-aruco (CORNER DETECTION)
+// ======================================================
+function detectMarkerScaleUsingJsAruco() {
+  // read raw pixels from canvas
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+  // detect marker
+  const detector = new AR.Detector();
+  const markers = detector.detect(imageData);
+
+  if (!markers || markers.length === 0) return null;
+
+  // use first detected marker
+  const m = markers[0];
+  const c = m.corners; // 4 corners
+
+  // average marker side length in pixels
+  const s1 = dist(c[0], c[1]);
+  const s2 = dist(c[1], c[2]);
+  const s3 = dist(c[2], c[3]);
+  const s4 = dist(c[3], c[0]);
+
+  const avgSidePixels = (s1 + s2 + s3 + s4) / 4;
+
+  // px per cm
+  const pixelsPerCm = avgSidePixels / MARKER_SIZE_CM;
+
+  // debug print (optional)
+  // result.innerText = "px/cm = " + pixelsPerCm.toFixed(2);
+
+  return pixelsPerCm;
+}
+
+function dist(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// ======================================================
+// ✅ 2) OBJECT SIZE USING OPENCV CONTOURS
+// ======================================================
+function detectObjectSize(pixelsPerCm) {
   let src = cv.imread(canvas);
 
-  // Center crop to reduce wide-angle lens distortion
-  let cropX = Math.floor(src.cols * 0.1);
-  let cropY = Math.floor(src.rows * 0.1);
-  let cropW = Math.floor(src.cols * 0.8);
-  let cropH = Math.floor(src.rows * 0.8);
-  let roi = src.roi(new cv.Rect(cropX, cropY, cropW, cropH));
-
   let gray = new cv.Mat();
-  cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY);
-
-  const marker = detectMarker(gray);
-  if (!marker) {
-    result.innerText = "❌ Marker not detected. Keep marker clear & visible.";
-    cleanup(src, roi, gray);
-    return null;
-  }
-
-  const markerPixels = (marker.width + marker.height) / 2;
-  const pixelsPerCm = markerPixels / MARKER_SIZE_CM;
-
-  const obj = detectObject(gray, marker);
-  if (!obj) {
-    result.innerText = "❌ Object not detected. Keep object clear.";
-    cleanup(src, roi, gray);
-    return null;
-  }
-
-  // Compute cm sizes
-  const objWcm = (obj.width / pixelsPerCm).toFixed(2);
-  const objHcm = (obj.height / pixelsPerCm).toFixed(2);
-
-  // Determine long and short (for rectangle)
-  const longSide = Math.max(parseFloat(objWcm), parseFloat(objHcm)).toFixed(2);
-  const shortSide = Math.min(parseFloat(objWcm), parseFloat(objHcm)).toFixed(2);
-
-  // Draw debug rectangles on captured image
-  drawRectOnCanvas(cropX + marker.x, cropY + marker.y, marker.width, marker.height, "lime");
-  drawRectOnCanvas(cropX + obj.x, cropY + obj.y, obj.width, obj.height, "yellow");
-
-  cleanup(src, roi, gray);
-
-  return { longSide, shortSide };
-}
-
-// ---------------- MARKER DETECTION (BEST SQUARE) ----------------
-function detectMarker(gray) {
   let blur = new cv.Mat();
   let edges = new cv.Mat();
+
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
   cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-  cv.Canny(blur, edges, 50, 150);
+  cv.Canny(blur, edges, 60, 150);
 
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
   cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-  let best = null;
-  let bestScore = 0;
-
-  for (let i = 0; i < contours.size(); i++) {
-    let rect = cv.boundingRect(contours.get(i));
-    let area = rect.width * rect.height;
-
-    // ignore tiny / huge areas
-    if (area < 2000 || area > 200000) continue;
-
-    // square test
-    let ratio = rect.width / rect.height;
-    ratio = ratio > 1 ? ratio : 1 / ratio;
-    if (ratio > 1.2) continue;
-
-    // marker should have inner pattern => high variance inside box
-    let region = gray.roi(rect);
-    let mean = new cv.Mat();
-    let stddev = new cv.Mat();
-    cv.meanStdDev(region, mean, stddev);
-
-    let varianceScore = stddev.doubleAt(0, 0); // stronger pattern => higher stddev
-
-    // score based on square + pattern richness + moderate size
-    let score = varianceScore + (area / 5000);
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = rect;
-    }
-
-    region.delete();
-    mean.delete();
-    stddev.delete();
+  if (contours.size() === 0) {
+    cleanup(src, gray, blur, edges, contours, hierarchy);
+    return {};
   }
 
-  cleanup(blur, edges, contours, hierarchy);
-  return best;
-}
-
-// ---------------- OBJECT DETECTION ----------------
-function detectObject(gray, markerRect) {
-  let blur = new cv.Mat();
-  let edges = new cv.Mat();
-  cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-  cv.Canny(blur, edges, 50, 150);
-
-  let contours = new cv.MatVector();
-  let hierarchy = new cv.Mat();
-  cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-  let best = null;
-  let bestArea = 0;
+  // pick largest contour as object
+  let maxArea = 0;
+  let bestRect = null;
 
   for (let i = 0; i < contours.size(); i++) {
-    let rect = cv.boundingRect(contours.get(i));
-    let area = rect.width * rect.height;
+    const cnt = contours.get(i);
+    const area = cv.contourArea(cnt);
 
-    if (area < 5000) continue;
-
-    // ignore marker region (overlap)
-    if (rectOverlap(rect, markerRect)) continue;
-
-    if (area > bestArea) {
-      bestArea = area;
-      best = rect;
+    if (area > maxArea) {
+      maxArea = area;
+      bestRect = cv.minAreaRect(cnt); // rotated tight rectangle
     }
   }
 
-  cleanup(blur, edges, contours, hierarchy);
-  return best;
+  if (!bestRect) {
+    cleanup(src, gray, blur, edges, contours, hierarchy);
+    return {};
+  }
+
+  const wPx = bestRect.size.width;
+  const hPx = bestRect.size.height;
+
+  const wCm = wPx / pixelsPerCm;
+  const hCm = hPx / pixelsPerCm;
+
+  cleanup(src, gray, blur, edges, contours, hierarchy);
+
+  return { wCm, hCm };
 }
 
-// ---------------- HELPERS ----------------
-function rectOverlap(a, b) {
-  return !(
-    a.x + a.width < b.x ||
-    a.x > b.x + b.width ||
-    a.y + a.height < b.y ||
-    a.y > b.y + b.height
-  );
-}
-
-function drawRectOnCanvas(x, y, w, h, color) {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 4;
-  ctx.strokeRect(x, y, w, h);
-}
-
+// ---------------- CLEANUP ----------------
 function cleanup(...mats) {
   mats.forEach(m => {
     try { m.delete(); } catch {}
