@@ -1,3 +1,5 @@
+alert("AR loaded? " + typeof AR);
+
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -213,3 +215,4 @@ function cleanup(...mats) {
     try { m.delete(); } catch {}
   });
 }
+
