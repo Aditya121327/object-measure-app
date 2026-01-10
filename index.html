@@ -5,10 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- OpenCV -->
-  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+ <script src="https://unpkg.com/js-aruco@1.3.0/build/aruco.js"></script>
+<script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
 
-  <!-- js-aruco (marker detection) -->
-  <script src="https://unpkg.com/js-aruco@1.3.0/build/aruco.js"></script>
 </head>
 
 <body style="text-align:center; font-family:Arial">
@@ -37,3 +36,4 @@
   <script src="script.js"></script>
 </body>
 </html>
+
