@@ -2,36 +2,31 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>WrapIt - 2 Photo Measurement (ArUco)</title>
+  <title>WrapIt - 3 Photo Measurement</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <link rel="stylesheet" href="style.css" />
 
-  <!-- ✅ OpenCV -->
+  <!-- OpenCV -->
   <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
 
-  <!-- ✅ ArUco -->
-  <script src="aruco.js"></script>
-
-  <!-- ✅ Main logic -->
+  <!-- Main script -->
   <script src="script.js" defer></script>
 </head>
 
 <body>
   <h2>WrapIt Prototype</h2>
-  <p class="note">
-    📌 Steps:<br>
-    1) Keep <b>printed ArUco marker</b> near object<br>
-    2) Take <b>Top photo</b><br>
-    3) Take <b>Side photo</b><br>
-    ✅ You will get L × W × H
+
+  <p class="note" id="instructions">
+    STEP 1: Keep marker near object and capture TOP view.
   </p>
 
   <video id="video" autoplay playsinline></video>
 
   <div class="btns">
-    <button id="btnTop">📸 Capture TOP View</button>
-    <button id="btnSide">📸 Capture SIDE View</button>
+    <button id="btnTop">📸 Capture TOP</button>
+    <button id="btnSide1" disabled>📸 Capture SIDE 1</button>
+    <button id="btnSide2" disabled>📸 Capture SIDE 2</button>
     <button id="btnReset">🔄 Reset</button>
   </div>
 
@@ -39,8 +34,8 @@
 
   <div id="result">Result will appear here...</div>
 
-  <div class="footer">
-    Tip: Use bright light, avoid shadows, keep camera parallel.
-  </div>
+  <p class="footer">
+    ✅ Keep marker visible in all photos. Use good lighting. Avoid shadows.
+  </p>
 </body>
 </html>
