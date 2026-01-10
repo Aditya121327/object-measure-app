@@ -3,15 +3,19 @@
 <head>
   <title>Smart Wrapping Assistant (2-Photo)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://docs.opencv.org/4.x/opencv.js"></script>
+
+  <!-- OpenCV -->
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+
+  <!-- js-aruco (marker detection) -->
+  <script src="https://unpkg.com/js-aruco@1.3.0/build/aruco.js"></script>
 </head>
 
 <body style="text-align:center; font-family:Arial">
 
-  <h2>Smart Wrapping Assistant</h2>
-
-  <p id="instructions" style="font-size:16px; font-weight:bold;">
-    STEP 1: Place object + marker (5cm) and capture TOP view.
+  <h2>Smart Wrapping Assistant (2 Photos)</h2>
+  <p id="instructions" style="font-weight:bold;">
+    STEP 1: Place object + ArUco marker (5cm) and capture TOP view.
   </p>
 
   <video id="video" autoplay playsinline
