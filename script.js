@@ -9,7 +9,7 @@ let sideMeasurement = null;  // {heightCm}
 
 // ✅ SET THIS SIZE AS PER YOUR PRINTED MARKER
 // Example: marker printed as 5cm x 5cm
-const MARKER_SIZE_CM = 5.0;
+const MARKER_SIZE_CM = 10.0;
 
 function onOpenCvReady() {
   cvReady = true;
@@ -238,3 +238,4 @@ function cleanup(...mats) {
     if (m && typeof m.delete === "function") m.delete();
   });
 }
+
