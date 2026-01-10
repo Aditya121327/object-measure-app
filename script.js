@@ -9,10 +9,23 @@ const resetBtn = document.getElementById("reset");
 const result = document.getElementById("result");
 const instructions = document.getElementById("instructions");
 
-// Marker real size in cm (IMPORTANT: your printed marker must be 5cm x 5cm)
 const MARKER_SIZE_CM = 5.0;
 
 let L = null, W = null, H = null;
+let openCvLoaded = false;
+
+// ---------------- OpenCV loader (NO FREEZE) ----------------
+window.onOpenCvReady = function () {
+  if (typeof cv === "undefined") {
+    result.innerText = "❌ OpenCV failed to load.";
+    return;
+  }
+
+  cv["onRuntimeInitialized"] = () => {
+    openCvLoaded = true;
+    console.log("✅ OpenCV Runtime Initialized");
+  };
+};
 
 // ---------------- CAMERA START ----------------
 navigator.mediaDevices.getUserMedia({
@@ -40,30 +53,43 @@ resetBtn.onclick = () => {
     "STEP 1: Place object + ArUco marker (5cm) and capture TOP view.";
 };
 
-// ---------------- BUTTONS ----------------
 captureTopBtn.onclick = () => captureAndProcess("top");
 captureSideBtn.onclick = () => captureAndProcess("side");
 
 // ---------------- CAPTURE ----------------
 function captureAndProcess(mode) {
-  // take photo from video
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  // show captured
   video.style.display = "none";
   canvas.style.display = "block";
 
   result.innerText = `Processing ${mode.toUpperCase()} view...`;
 
-  waitForOpenCV(() => {
-    // 1) detect marker scale using js-aruco
+  // ✅ HARD TIMEOUT so it never hangs forever
+  let start = Date.now();
+  const timer = setInterval(() => {
+    if (openCvLoaded) {
+      clearInterval(timer);
+      processImage(mode);
+    } else if (Date.now() - start > 8000) {
+      clearInterval(timer);
+      result.innerText =
+        "❌ OpenCV is taking too long to load.\nTry reloading page (strong network).";
+    }
+  }, 100);
+}
+
+// ---------------- PROCESS IMAGE ----------------
+function processImage(mode) {
+  try {
+    // 1) detect marker scale
     const pixelsPerCm = detectMarkerScaleUsingJsAruco();
 
     if (!pixelsPerCm) {
       result.innerText =
-        "❌ ArUco marker not detected clearly.\nKeep marker near object, fully visible, good lighting.";
+        "❌ ArUco marker not detected clearly.\nKeep marker close and visible.";
       return;
     }
 
@@ -75,12 +101,10 @@ function captureAndProcess(mode) {
       return;
     }
 
-    // width/height from object in this photo
     const longSide = Math.max(measured.wCm, measured.hCm);
     const shortSide = Math.min(measured.wCm, measured.hCm);
 
     if (mode === "top") {
-      // TOP photo provides L and W
       L = longSide.toFixed(2);
       W = shortSide.toFixed(2);
 
@@ -92,60 +116,40 @@ function captureAndProcess(mode) {
 
       captureTopBtn.disabled = true;
       captureSideBtn.disabled = false;
-
     } else {
-      // SIDE photo provides H
       H = longSide.toFixed(2);
 
       result.innerText =
         `✅ FINAL MEASUREMENT\nLength: ${L} cm\nWidth : ${W} cm\nHeight: ${H} cm`;
 
       instructions.innerText =
-        "✅ Measurement complete. Next step: wrapping paper & fold guide.";
-
+        "✅ Measurement complete.";
       captureSideBtn.disabled = true;
     }
-  });
+  } catch (e) {
+    result.innerText = "❌ Error: " + e.message;
+  }
 }
 
-// ---------------- WAIT FOR OPENCV ----------------
-function waitForOpenCV(cb) {
-  if (typeof cv !== "undefined" && cv.Mat) cb();
-  else setTimeout(() => waitForOpenCV(cb), 100);
-}
-
-// ======================================================
-// ✅ 1) MARKER SCALE USING js-aruco (CORNER DETECTION)
-// ======================================================
+// ---------------- MARKER SCALE (js-aruco) ----------------
 function detectMarkerScaleUsingJsAruco() {
-  // read raw pixels from canvas
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-  // detect marker
   const detector = new AR.Detector();
   const markers = detector.detect(imageData);
 
   if (!markers || markers.length === 0) return null;
 
-  // use first detected marker
   const m = markers[0];
-  const c = m.corners; // 4 corners
+  const c = m.corners;
 
-  // average marker side length in pixels
   const s1 = dist(c[0], c[1]);
   const s2 = dist(c[1], c[2]);
   const s3 = dist(c[2], c[3]);
   const s4 = dist(c[3], c[0]);
 
   const avgSidePixels = (s1 + s2 + s3 + s4) / 4;
-
-  // px per cm
-  const pixelsPerCm = avgSidePixels / MARKER_SIZE_CM;
-
-  // debug print (optional)
-  // result.innerText = "px/cm = " + pixelsPerCm.toFixed(2);
-
-  return pixelsPerCm;
+  return avgSidePixels / MARKER_SIZE_CM;
 }
 
 function dist(a, b) {
@@ -154,9 +158,7 @@ function dist(a, b) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-// ======================================================
-// ✅ 2) OBJECT SIZE USING OPENCV CONTOURS
-// ======================================================
+// ---------------- OBJECT SIZE (OpenCV) ----------------
 function detectObjectSize(pixelsPerCm) {
   let src = cv.imread(canvas);
 
@@ -177,7 +179,6 @@ function detectObjectSize(pixelsPerCm) {
     return {};
   }
 
-  // pick largest contour as object
   let maxArea = 0;
   let bestRect = null;
 
@@ -187,7 +188,7 @@ function detectObjectSize(pixelsPerCm) {
 
     if (area > maxArea) {
       maxArea = area;
-      bestRect = cv.minAreaRect(cnt); // rotated tight rectangle
+      bestRect = cv.minAreaRect(cnt);
     }
   }
 
@@ -203,7 +204,6 @@ function detectObjectSize(pixelsPerCm) {
   const hCm = hPx / pixelsPerCm;
 
   cleanup(src, gray, blur, edges, contours, hierarchy);
-
   return { wCm, hCm };
 }
 
