@@ -1,45 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Smart Wrapping Assistant</title>
+  <title>Smart Wrapping Assistant (2-Photo)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- OpenCV -->
   <script src="https://docs.opencv.org/4.x/opencv.js"></script>
 </head>
 
 <body style="text-align:center; font-family:Arial">
 
   <h2>Smart Wrapping Assistant</h2>
-  <p><b>Instructions:</b> Place object fully inside A4 paper. Hold phone top-down.</p>
 
-  <!-- Camera container -->
-  <div style="position:relative; display:inline-block; width:100%; max-width:400px;">
-    
-    <!-- Live Camera -->
-    <video id="video" autoplay playsinline
-      style="width:100%; border:2px solid black;">
-    </video>
+  <p id="instructions" style="font-size:16px; font-weight:bold;">
+    STEP 1: Place object + marker (5cm) and capture TOP view.
+  </p>
 
-    <!-- Grid overlay -->
-    <canvas id="grid"
-      style="position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none;">
-    </canvas>
-  </div>
+  <video id="video" autoplay playsinline
+    style="width:100%; max-width:420px; border:2px solid black;"></video>
 
   <br><br>
 
-  <button id="capture">Capture & Measure</button>
-  <button id="reset" style="display:none;">Reset</button>
+  <button id="captureTop">Capture TOP View</button>
+  <button id="captureSide" disabled>Capture SIDE View</button>
+  <button id="reset">Reset</button>
 
   <br><br>
 
-  <!-- Captured Image -->
   <canvas id="canvas"
-    style="display:none; width:100%; max-width:400px; border:2px solid red;">
-  </canvas>
+    style="display:none; width:100%; max-width:420px; border:2px solid red;"></canvas>
 
-  <!-- Result -->
   <p id="result" style="font-size:18px; font-weight:bold;"></p>
 
   <script src="script.js"></script>
