@@ -1,46 +1,46 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Object Measurement + Shape Detection</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <title>WrapIt - 2 Photo Measurement (ArUco)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- ArUco Marker Detector -->
-  <script src="aruco.js"></script>
+  <link rel="stylesheet" href="style.css" />
 
   <!-- ✅ OpenCV -->
   <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
 
-  <!-- ✅ Your Script -->
+  <!-- ✅ ArUco -->
+  <script src="aruco.js"></script>
+
+  <!-- ✅ Main logic -->
   <script src="script.js" defer></script>
 </head>
 
-
-<body style="text-align:center; font-family:Arial">
-
-  <h2>Smart Wrapping Assistant (2 Photos)</h2>
-
-  <p id="instructions" style="font-weight:bold;">
-    STEP 1: Place object + marker (5cm) and capture TOP view.
+<body>
+  <h2>WrapIt Prototype</h2>
+  <p class="note">
+    📌 Steps:<br>
+    1) Keep <b>printed ArUco marker</b> near object<br>
+    2) Take <b>Top photo</b><br>
+    3) Take <b>Side photo</b><br>
+    ✅ You will get L × W × H
   </p>
 
-  <video id="video" autoplay playsinline
-    style="width:100%; max-width:420px; border:2px solid black;"></video>
+  <video id="video" autoplay playsinline></video>
 
-  <br><br>
+  <div class="btns">
+    <button id="btnTop">📸 Capture TOP View</button>
+    <button id="btnSide">📸 Capture SIDE View</button>
+    <button id="btnReset">🔄 Reset</button>
+  </div>
 
-  <button id="captureTop">Capture TOP View</button>
-  <button id="captureSide" disabled>Capture SIDE View</button>
-  <button id="reset">Reset</button>
+  <canvas id="canvas"></canvas>
 
-  <br><br>
+  <div id="result">Result will appear here...</div>
 
-  <canvas id="canvas"
-    style="display:none; width:100%; max-width:420px; border:2px solid red;"></canvas>
-
-  <p id="result" style="font-size:18px; font-weight:bold;"></p>
-
-  <script src="script.js"></script>
+  <div class="footer">
+    Tip: Use bright light, avoid shadows, keep camera parallel.
+  </div>
 </body>
 </html>
-
-
