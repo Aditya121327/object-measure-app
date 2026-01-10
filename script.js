@@ -1,15 +1,15 @@
-let video, canvas, ctx, resultBox;
-let btnTop, btnSide, btnReset;
+let video, canvas, ctx, resultBox, instructions;
+let btnTop, btnSide1, btnSide2, btnReset;
 
 let cvReady = false;
 
-// --- store measurements ---
-let topMeasurement = null;   // {lengthCm, widthCm}
-let sideMeasurement = null;  // {heightCm}
+// ✅ marker size in cm (change if you printed 10cm marker)
+const MARKER_SIZE_CM = 5.0;
 
-// ✅ SET THIS SIZE AS PER YOUR PRINTED MARKER
-// Example: marker printed as 5cm x 5cm
-const MARKER_SIZE_CM = 10.0;
+// store results
+let topData = null;   // {L,W}
+let side1Data = null; // {H,W}
+let side2Data = null; // {H,L}
 
 function onOpenCvReady() {
   cvReady = true;
@@ -22,28 +22,29 @@ async function init() {
   canvas = document.getElementById("canvas");
   ctx = canvas.getContext("2d");
   resultBox = document.getElementById("result");
+  instructions = document.getElementById("instructions");
 
   btnTop = document.getElementById("btnTop");
-  btnSide = document.getElementById("btnSide");
+  btnSide1 = document.getElementById("btnSide1");
+  btnSide2 = document.getElementById("btnSide2");
   btnReset = document.getElementById("btnReset");
 
   await startCamera();
 
-  btnTop.addEventListener("click", () => captureAndMeasure("top"));
-  btnSide.addEventListener("click", () => captureAndMeasure("side"));
-  btnReset.addEventListener("click", resetAll);
+  btnTop.onclick = () => captureAndMeasure("top");
+  btnSide1.onclick = () => captureAndMeasure("side1");
+  btnSide2.onclick = () => captureAndMeasure("side2");
+  btnReset.onclick = resetAll;
 
-  showStatus("✅ Camera ready. Capture TOP view first.");
+  showStatus("✅ Camera ready.\nCapture TOP view first.");
 }
 
-// ✅ Back camera open
 async function startCamera() {
   try {
-    const constraints = {
+    const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: "environment" } },
       audio: false
-    };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    });
     video.srcObject = stream;
   } catch (err) {
     console.error(err);
@@ -51,37 +52,75 @@ async function startCamera() {
   }
 }
 
-// ✅ Capture + measurement
+function resetAll() {
+  topData = null;
+  side1Data = null;
+  side2Data = null;
+
+  btnTop.disabled = false;
+  btnSide1.disabled = true;
+  btnSide2.disabled = true;
+
+  instructions.innerText = "STEP 1: Keep marker near object and capture TOP view.";
+  showStatus("🔄 Reset done.\nCapture TOP view first.");
+}
+
 function captureAndMeasure(mode) {
   if (!cvReady) {
     showStatus("⏳ OpenCV still loading...");
     return;
   }
 
-  // capture frame
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  showStatus(`⏳ Processing ${mode.toUpperCase()} view...`);
+  showStatus(`⏳ Processing ${mode.toUpperCase()} photo...`);
 
-  // analyze
   setTimeout(() => {
-    const measurement = analyzeImage(mode);
-    if (!measurement) return;
+    const obj = analyzeImage();
 
-    if (mode === "top") topMeasurement = measurement;
-    else sideMeasurement = measurement;
+    if (!obj) return;
 
-    showFinalIfReady();
+    // obj = {wCm, hCm}
+    let longSide = Math.max(obj.wCm, obj.hCm);
+    let shortSide = Math.min(obj.wCm, obj.hCm);
+
+    if (mode === "top") {
+      topData = { L: longSide, W: shortSide };
+
+      btnTop.disabled = true;
+      btnSide1.disabled = false;
+
+      instructions.innerText = "STEP 2: Capture SIDE 1 view (marker visible).";
+
+      showProgress();
+
+    } else if (mode === "side1") {
+      side1Data = { H: longSide, W: shortSide };
+
+      btnSide1.disabled = true;
+      btnSide2.disabled = false;
+
+      instructions.innerText = "STEP 3: Rotate object 90° and capture SIDE 2 view.";
+
+      showProgress();
+
+    } else if (mode === "side2") {
+      side2Data = { H: longSide, L: shortSide };
+
+      btnSide2.disabled = true;
+
+      instructions.innerText = "✅ All photos captured. Final result calculated.";
+      showProgress();
+    }
   }, 80);
 }
 
-// ✅ Detect marker + object contour + convert to cm
-function analyzeImage(mode) {
+// ✅ Main analysis (marker scale + object contour)
+function analyzeImage() {
   let src = cv.imread(canvas);
 
-  // preprocess
   let gray = new cv.Mat();
   let blur = new cv.Mat();
   let edges = new cv.Mat();
@@ -90,69 +129,67 @@ function analyzeImage(mode) {
   cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
   cv.Canny(blur, edges, 50, 150);
 
-  // contours
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
   cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
   if (contours.size() < 2) {
-    showStatus("❌ Not enough contours.\nKeep marker + object visible & clear.");
+    showStatus("❌ Marker/Object not detected.\nKeep marker visible & improve lighting.");
     cleanup(src, gray, blur, edges, contours, hierarchy);
     return null;
   }
 
-  // Step 1: collect candidates
-  let contourData = [];
+  // collect candidates
+  let items = [];
   for (let i = 0; i < contours.size(); i++) {
     let cnt = contours.get(i);
     let rect = cv.boundingRect(cnt);
     let area = rect.width * rect.height;
-
-    if (area < 3000) continue; // remove noise
-    contourData.push({ rect, area });
+    if (area < 2500) continue;
+    items.push({ rect, area });
   }
 
-  if (contourData.length < 2) {
-    showStatus("❌ Cannot detect marker + object properly.\nTry moving closer.");
+  if (items.length < 2) {
+    showStatus("❌ Not enough objects detected.\nMove closer to marker.");
     cleanup(src, gray, blur, edges, contours, hierarchy);
     return null;
   }
 
-  // sort biggest first
-  contourData.sort((a, b) => b.area - a.area);
+  // sort big->small
+  items.sort((a, b) => b.area - a.area);
 
-  // marker likely = smaller square-like contour, object likely = biggest
-  // But object can be bigger, marker smaller. So:
-  let objectRect = contourData[0].rect;
+  // object = biggest
+  let objectRect = items[0].rect;
+
+  // marker = most square-like contour
   let markerRect = null;
+  let bestSquareScore = Infinity;
 
-  // find marker as most "square-like"
-  let bestScore = Infinity;
-  for (let i = 0; i < contourData.length; i++) {
-    const r = contourData[i].rect;
+  for (let i = 0; i < items.length; i++) {
+    const r = items[i].rect;
+    if (r.width < 30 || r.height < 30) continue;
     const ratio = r.width / r.height;
-    const score = Math.abs(1 - ratio); // close to 0 => square
-    if (score < bestScore && r.width > 40 && r.height > 40) {
-      bestScore = score;
+    const score = Math.abs(1 - ratio);
+    if (score < bestSquareScore) {
+      bestSquareScore = score;
       markerRect = r;
     }
   }
 
   if (!markerRect) {
-    showStatus("❌ Marker not detected.\nMake marker clear in camera.");
+    showStatus("❌ Marker not detected.\nKeep marker clear, not blurred.");
     cleanup(src, gray, blur, edges, contours, hierarchy);
     return null;
   }
 
-  // compute px/cm using marker size
-  const markerPx = (markerRect.width + markerRect.height) / 2; // avg px
+  // scale
+  const markerPx = (markerRect.width + markerRect.height) / 2;
   const pxPerCm = markerPx / MARKER_SIZE_CM;
 
-  // compute object size in cm
-  const objWcm = (objectRect.width / pxPerCm);
-  const objHcm = (objectRect.height / pxPerCm);
+  const wCm = objectRect.width / pxPerCm;
+  const hCm = objectRect.height / pxPerCm;
 
-  // draw rectangles
+  // Draw rectangles
   cv.rectangle(
     src,
     new cv.Point(objectRect.x, objectRect.y),
@@ -172,61 +209,42 @@ function analyzeImage(mode) {
   cv.imshow(canvas, src);
 
   cleanup(src, gray, blur, edges, contours, hierarchy);
-
-  // top view -> length/width
-  if (mode === "top") {
-    return {
-      lengthCm: Math.max(objWcm, objHcm),
-      widthCm: Math.min(objWcm, objHcm)
-    };
-  }
-
-  // side view -> height (take longer side as height)
-  return {
-    heightCm: Math.max(objWcm, objHcm)
-  };
+  return { wCm, hCm };
 }
 
-function showFinalIfReady() {
+// ✅ Display Progress + Final
+function showProgress() {
   let msg = "";
 
-  if (topMeasurement) {
-    msg += `✅ TOP VIEW DONE\nLength: ${topMeasurement.lengthCm.toFixed(2)} cm\nWidth: ${topMeasurement.widthCm.toFixed(2)} cm\n\n`;
-  } else {
-    msg += "📌 Capture TOP view first.\n\n";
-  }
+  if (topData) {
+    msg += `✅ TOP VIEW\nL: ${topData.L.toFixed(2)} cm\nW: ${topData.W.toFixed(2)} cm\n\n`;
+  } else msg += `📌 TOP VIEW pending...\n\n`;
 
-  if (sideMeasurement) {
-    msg += `✅ SIDE VIEW DONE\nHeight: ${sideMeasurement.heightCm.toFixed(2)} cm\n\n`;
-  } else {
-    msg += "📌 Now capture SIDE view.\n\n";
-  }
+  if (side1Data) {
+    msg += `✅ SIDE 1\nH: ${side1Data.H.toFixed(2)} cm\nW: ${side1Data.W.toFixed(2)} cm\n\n`;
+  } else msg += `📌 SIDE 1 pending...\n\n`;
 
-  // show final
-  if (topMeasurement && sideMeasurement) {
-    const L = topMeasurement.lengthCm;
-    const W = topMeasurement.widthCm;
-    const H = sideMeasurement.heightCm;
+  if (side2Data) {
+    msg += `✅ SIDE 2\nH: ${side2Data.H.toFixed(2)} cm\nL: ${side2Data.L.toFixed(2)} cm\n\n`;
+  } else msg += `📌 SIDE 2 pending...\n\n`;
+
+  if (topData && side1Data && side2Data) {
+    // Final dims
+    const L = side2Data.L;          // length from side2
+    const W = side1Data.W;          // width from side1
+    const H = (side1Data.H + side2Data.H) / 2; // avg height
 
     msg += `🎯 FINAL DIMENSIONS\n`;
     msg += `L × W × H = ${L.toFixed(2)} × ${W.toFixed(2)} × ${H.toFixed(2)} cm\n\n`;
 
-    // packaging paper estimate (prototype for rectangular box wrap)
-    // surface area approx = 2(LW + LH + WH)
-    const surfaceArea = 2 * (L*W + L*H + W*H);
-
-    msg += `📦 Paper Needed (estimate)\n`;
+    // wrapping estimate
+    const surfaceArea = 2 * (L * W + L * H + W * H);
+    msg += `📦 Paper Needed Estimate\n`;
     msg += `Surface Area ≈ ${surfaceArea.toFixed(2)} cm²\n`;
-    msg += `(+ 10% margin recommended)\n`;
+    msg += `(add 10% margin)\n`;
   }
 
   showStatus(msg);
-}
-
-function resetAll() {
-  topMeasurement = null;
-  sideMeasurement = null;
-  showStatus("🔄 Reset done.\nCapture TOP view first.");
 }
 
 function showStatus(text) {
@@ -238,4 +256,3 @@ function cleanup(...mats) {
     if (m && typeof m.delete === "function") m.delete();
   });
 }
-
