@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>WrapIt - 3 Photo Measurement</title>
+  <title>WrapIt - Measurement + Wrapping Guide</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <link rel="stylesheet" href="style.css" />
@@ -34,8 +34,26 @@
 
   <div id="result">Result will appear here...</div>
 
+  <hr style="max-width:420px; margin:18px auto; opacity:0.4;" />
+
+  <!-- Wrapping Guide -->
+  <div style="max-width:420px; margin:0 auto;">
+    <h3 style="margin:10px 0;">Wrapping Guide</h3>
+
+    <select id="wrapMethod" style="padding:10px; border-radius:10px; width:100%; max-width:420px;">
+      <option value="japaneseB" selected>Japanese Fold (Corner Tuck + Lock)</option>
+      <option value="simpleA">Simple Fold (Coming Soon)</option>
+    </select>
+
+    <div class="btns">
+      <button id="btnShowGuide">🎌 Show Wrapping Guide</button>
+      <button id="btnPrevStep" disabled>⬅ Prev</button>
+      <button id="btnNextStep" disabled>Next ➡</button>
+    </div>
+  </div>
+
   <p class="footer">
-    ✅ Keep marker visible in all photos. Use good lighting. Avoid shadows.
+    ✅ After measurement, click “Show Wrapping Guide”.
   </p>
 </body>
 </html>
