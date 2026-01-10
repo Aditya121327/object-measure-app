@@ -1,222 +1,240 @@
-window.onload = () => {
-  alert("AR is: " + typeof AR);
-};
+let video, canvas, ctx, resultBox;
+let btnTop, btnSide, btnReset;
 
+let cvReady = false;
 
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+// --- store measurements ---
+let topMeasurement = null;   // {lengthCm, widthCm}
+let sideMeasurement = null;  // {heightCm}
 
-const captureTopBtn = document.getElementById("captureTop");
-const captureSideBtn = document.getElementById("captureSide");
-const resetBtn = document.getElementById("reset");
-
-const result = document.getElementById("result");
-const instructions = document.getElementById("instructions");
-
+// ✅ SET THIS SIZE AS PER YOUR PRINTED MARKER
+// Example: marker printed as 5cm x 5cm
 const MARKER_SIZE_CM = 5.0;
 
-let L = null, W = null, H = null;
-let openCvLoaded = false;
+function onOpenCvReady() {
+  cvReady = true;
+  console.log("✅ OpenCV Loaded");
+  init();
+}
 
-// ---------------- OpenCV loader (NO FREEZE) ----------------
-window.onOpenCvReady = function () {
-  if (typeof cv === "undefined") {
-    result.innerText = "❌ OpenCV failed to load.";
+async function init() {
+  video = document.getElementById("video");
+  canvas = document.getElementById("canvas");
+  ctx = canvas.getContext("2d");
+  resultBox = document.getElementById("result");
+
+  btnTop = document.getElementById("btnTop");
+  btnSide = document.getElementById("btnSide");
+  btnReset = document.getElementById("btnReset");
+
+  await startCamera();
+
+  btnTop.addEventListener("click", () => captureAndMeasure("top"));
+  btnSide.addEventListener("click", () => captureAndMeasure("side"));
+  btnReset.addEventListener("click", resetAll);
+
+  showStatus("✅ Camera ready. Capture TOP view first.");
+}
+
+// ✅ Back camera open
+async function startCamera() {
+  try {
+    const constraints = {
+      video: { facingMode: { ideal: "environment" } },
+      audio: false
+    };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+  } catch (err) {
+    console.error(err);
+    showStatus("❌ Camera error: " + err.message + "\nUse HTTPS (GitHub Pages).");
+  }
+}
+
+// ✅ Capture + measurement
+function captureAndMeasure(mode) {
+  if (!cvReady) {
+    showStatus("⏳ OpenCV still loading...");
     return;
   }
 
-  cv["onRuntimeInitialized"] = () => {
-    openCvLoaded = true;
-    console.log("✅ OpenCV Runtime Initialized");
-  };
-};
-
-// ---------------- CAMERA START ----------------
-navigator.mediaDevices.getUserMedia({
-  video: { facingMode: "environment" },
-  audio: false
-})
-.then(stream => {
-  video.srcObject = stream;
-})
-.catch(err => {
-  alert("Camera error: " + err.message);
-});
-
-// ---------------- RESET ----------------
-resetBtn.onclick = () => {
-  L = W = H = null;
-  result.innerText = "";
-  canvas.style.display = "none";
-  video.style.display = "block";
-
-  captureTopBtn.disabled = false;
-  captureSideBtn.disabled = true;
-
-  instructions.innerText =
-    "STEP 1: Place object + ArUco marker (5cm) and capture TOP view.";
-};
-
-captureTopBtn.onclick = () => captureAndProcess("top");
-captureSideBtn.onclick = () => captureAndProcess("side");
-
-// ---------------- CAPTURE ----------------
-function captureAndProcess(mode) {
+  // capture frame
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  video.style.display = "none";
-  canvas.style.display = "block";
+  showStatus(`⏳ Processing ${mode.toUpperCase()} view...`);
 
-  result.innerText = `Processing ${mode.toUpperCase()} view...`;
+  // analyze
+  setTimeout(() => {
+    const measurement = analyzeImage(mode);
+    if (!measurement) return;
 
-  // ✅ HARD TIMEOUT so it never hangs forever
-  let start = Date.now();
-  const timer = setInterval(() => {
-    if (openCvLoaded) {
-      clearInterval(timer);
-      processImage(mode);
-    } else if (Date.now() - start > 8000) {
-      clearInterval(timer);
-      result.innerText =
-        "❌ OpenCV is taking too long to load.\nTry reloading page (strong network).";
-    }
-  }, 100);
+    if (mode === "top") topMeasurement = measurement;
+    else sideMeasurement = measurement;
+
+    showFinalIfReady();
+  }, 80);
 }
 
-// ---------------- PROCESS IMAGE ----------------
-function processImage(mode) {
-  try {
-    // 1) detect marker scale
-    const pixelsPerCm = detectMarkerScaleUsingJsAruco();
-
-    if (!pixelsPerCm) {
-      result.innerText =
-        "❌ ArUco marker not detected clearly.\nKeep marker close and visible.";
-      return;
-    }
-
-    // 2) detect object size using OpenCV
-    const measured = detectObjectSize(pixelsPerCm);
-
-    if (!measured.wCm || !measured.hCm) {
-      result.innerText = "❌ Object not detected clearly.";
-      return;
-    }
-
-    const longSide = Math.max(measured.wCm, measured.hCm);
-    const shortSide = Math.min(measured.wCm, measured.hCm);
-
-    if (mode === "top") {
-      L = longSide.toFixed(2);
-      W = shortSide.toFixed(2);
-
-      result.innerText =
-        `✅ TOP View Done\nLength: ${L} cm\nWidth: ${W} cm\n\nNow capture SIDE view.`;
-
-      instructions.innerText =
-        "STEP 2: Capture SIDE view with marker visible (marker beside object).";
-
-      captureTopBtn.disabled = true;
-      captureSideBtn.disabled = false;
-    } else {
-      H = longSide.toFixed(2);
-
-      result.innerText =
-        `✅ FINAL MEASUREMENT\nLength: ${L} cm\nWidth : ${W} cm\nHeight: ${H} cm`;
-
-      instructions.innerText =
-        "✅ Measurement complete.";
-      captureSideBtn.disabled = true;
-    }
-  } catch (e) {
-    result.innerText = "❌ Error: " + e.message;
-  }
-}
-
-// ---------------- MARKER SCALE (js-aruco) ----------------
-function detectMarkerScaleUsingJsAruco() {
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-  const detector = new AR.Detector();
-  const markers = detector.detect(imageData);
-
-  if (!markers || markers.length === 0) return null;
-
-  const m = markers[0];
-  const c = m.corners;
-
-  const s1 = dist(c[0], c[1]);
-  const s2 = dist(c[1], c[2]);
-  const s3 = dist(c[2], c[3]);
-  const s4 = dist(c[3], c[0]);
-
-  const avgSidePixels = (s1 + s2 + s3 + s4) / 4;
-  return avgSidePixels / MARKER_SIZE_CM;
-}
-
-function dist(a, b) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-// ---------------- OBJECT SIZE (OpenCV) ----------------
-function detectObjectSize(pixelsPerCm) {
+// ✅ Detect marker + object contour + convert to cm
+function analyzeImage(mode) {
   let src = cv.imread(canvas);
 
+  // preprocess
   let gray = new cv.Mat();
   let blur = new cv.Mat();
   let edges = new cv.Mat();
 
   cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
   cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-  cv.Canny(blur, edges, 60, 150);
+  cv.Canny(blur, edges, 50, 150);
 
+  // contours
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
   cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-  if (contours.size() === 0) {
+  if (contours.size() < 2) {
+    showStatus("❌ Not enough contours.\nKeep marker + object visible & clear.");
     cleanup(src, gray, blur, edges, contours, hierarchy);
-    return {};
+    return null;
   }
 
-  let maxArea = 0;
-  let bestRect = null;
-
+  // Step 1: collect candidates
+  let contourData = [];
   for (let i = 0; i < contours.size(); i++) {
-    const cnt = contours.get(i);
-    const area = cv.contourArea(cnt);
+    let cnt = contours.get(i);
+    let rect = cv.boundingRect(cnt);
+    let area = rect.width * rect.height;
 
-    if (area > maxArea) {
-      maxArea = area;
-      bestRect = cv.minAreaRect(cnt);
+    if (area < 3000) continue; // remove noise
+    contourData.push({ rect, area });
+  }
+
+  if (contourData.length < 2) {
+    showStatus("❌ Cannot detect marker + object properly.\nTry moving closer.");
+    cleanup(src, gray, blur, edges, contours, hierarchy);
+    return null;
+  }
+
+  // sort biggest first
+  contourData.sort((a, b) => b.area - a.area);
+
+  // marker likely = smaller square-like contour, object likely = biggest
+  // But object can be bigger, marker smaller. So:
+  let objectRect = contourData[0].rect;
+  let markerRect = null;
+
+  // find marker as most "square-like"
+  let bestScore = Infinity;
+  for (let i = 0; i < contourData.length; i++) {
+    const r = contourData[i].rect;
+    const ratio = r.width / r.height;
+    const score = Math.abs(1 - ratio); // close to 0 => square
+    if (score < bestScore && r.width > 40 && r.height > 40) {
+      bestScore = score;
+      markerRect = r;
     }
   }
 
-  if (!bestRect) {
+  if (!markerRect) {
+    showStatus("❌ Marker not detected.\nMake marker clear in camera.");
     cleanup(src, gray, blur, edges, contours, hierarchy);
-    return {};
+    return null;
   }
 
-  const wPx = bestRect.size.width;
-  const hPx = bestRect.size.height;
+  // compute px/cm using marker size
+  const markerPx = (markerRect.width + markerRect.height) / 2; // avg px
+  const pxPerCm = markerPx / MARKER_SIZE_CM;
 
-  const wCm = wPx / pixelsPerCm;
-  const hCm = hPx / pixelsPerCm;
+  // compute object size in cm
+  const objWcm = (objectRect.width / pxPerCm);
+  const objHcm = (objectRect.height / pxPerCm);
+
+  // draw rectangles
+  cv.rectangle(
+    src,
+    new cv.Point(objectRect.x, objectRect.y),
+    new cv.Point(objectRect.x + objectRect.width, objectRect.y + objectRect.height),
+    new cv.Scalar(0, 255, 0, 255),
+    4
+  );
+
+  cv.rectangle(
+    src,
+    new cv.Point(markerRect.x, markerRect.y),
+    new cv.Point(markerRect.x + markerRect.width, markerRect.y + markerRect.height),
+    new cv.Scalar(255, 0, 0, 255),
+    4
+  );
+
+  cv.imshow(canvas, src);
 
   cleanup(src, gray, blur, edges, contours, hierarchy);
-  return { wCm, hCm };
+
+  // top view -> length/width
+  if (mode === "top") {
+    return {
+      lengthCm: Math.max(objWcm, objHcm),
+      widthCm: Math.min(objWcm, objHcm)
+    };
+  }
+
+  // side view -> height (take longer side as height)
+  return {
+    heightCm: Math.max(objWcm, objHcm)
+  };
 }
 
-// ---------------- CLEANUP ----------------
+function showFinalIfReady() {
+  let msg = "";
+
+  if (topMeasurement) {
+    msg += `✅ TOP VIEW DONE\nLength: ${topMeasurement.lengthCm.toFixed(2)} cm\nWidth: ${topMeasurement.widthCm.toFixed(2)} cm\n\n`;
+  } else {
+    msg += "📌 Capture TOP view first.\n\n";
+  }
+
+  if (sideMeasurement) {
+    msg += `✅ SIDE VIEW DONE\nHeight: ${sideMeasurement.heightCm.toFixed(2)} cm\n\n`;
+  } else {
+    msg += "📌 Now capture SIDE view.\n\n";
+  }
+
+  // show final
+  if (topMeasurement && sideMeasurement) {
+    const L = topMeasurement.lengthCm;
+    const W = topMeasurement.widthCm;
+    const H = sideMeasurement.heightCm;
+
+    msg += `🎯 FINAL DIMENSIONS\n`;
+    msg += `L × W × H = ${L.toFixed(2)} × ${W.toFixed(2)} × ${H.toFixed(2)} cm\n\n`;
+
+    // packaging paper estimate (prototype for rectangular box wrap)
+    // surface area approx = 2(LW + LH + WH)
+    const surfaceArea = 2 * (L*W + L*H + W*H);
+
+    msg += `📦 Paper Needed (estimate)\n`;
+    msg += `Surface Area ≈ ${surfaceArea.toFixed(2)} cm²\n`;
+    msg += `(+ 10% margin recommended)\n`;
+  }
+
+  showStatus(msg);
+}
+
+function resetAll() {
+  topMeasurement = null;
+  sideMeasurement = null;
+  showStatus("🔄 Reset done.\nCapture TOP view first.");
+}
+
+function showStatus(text) {
+  resultBox.innerText = text;
+}
+
 function cleanup(...mats) {
   mats.forEach(m => {
-    try { m.delete(); } catch {}
+    if (m && typeof m.delete === "function") m.delete();
   });
 }
-
-
