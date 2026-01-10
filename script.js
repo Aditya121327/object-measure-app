@@ -1,4 +1,7 @@
-alert("AR loaded? " + typeof AR);
+window.onload = () => {
+  alert("AR is: " + typeof AR);
+};
+
 
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
@@ -215,4 +218,5 @@ function cleanup(...mats) {
     try { m.delete(); } catch {}
   });
 }
+
 
