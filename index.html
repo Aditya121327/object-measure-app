@@ -19,10 +19,9 @@
         <h1>WrapIt</h1>
         <p>Measure + Wrapping Plan (Cuboid prototype)</p>
       </div>
-      <span class="badge">v1.1</span>
+      <span class="badge">v1.2</span>
     </header>
 
-    <!-- Stepper -->
     <div class="stepper">
       <div class="step active" id="step1">1<br><span>Capture</span></div>
       <div class="line"></div>
@@ -38,13 +37,13 @@
     <video id="video" autoplay playsinline></video>
 
     <div class="btns">
-      <button id="btnTop">📸 TOP</button>
-      <button id="btnSide1" disabled>📸 SIDE 1</button>
-      <button id="btnSide2" disabled>📸 SIDE 2</button>
+      <button id="btnTop">📸 TOP (marker)</button>
+      <button id="btnSide1" disabled>📸 SIDE 1 (marker)</button>
+      <button id="btnSide2" disabled>📸 SIDE 2 (marker)</button>
+      <button id="btnCleanTop" disabled>📸 CLEAN TOP (no marker)</button>
       <button id="btnReset" class="secondary">Reset</button>
     </div>
 
-    <!-- Photo + overlay -->
     <div class="canvasWrap">
       <canvas id="canvasPhoto"></canvas>
       <canvas id="canvasOverlay"></canvas>
@@ -52,7 +51,6 @@
 
     <div class="card" id="result">Result will appear here...</div>
 
-    <!-- Wrap Guide Panel -->
     <div class="card">
       <h2 class="sectionTitle">Wrapping Guide</h2>
 
@@ -74,7 +72,7 @@
       </div>
 
       <p class="small">
-        ✅ Wrapping overlay is generated on the TOP photo.
+        ✅ Best visuals: capture CLEAN TOP (without marker), then generate guide.
       </p>
     </div>
 
