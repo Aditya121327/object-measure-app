@@ -1,14 +1,19 @@
-let video, canvas, ctx, resultBox, instructions;
-let btnTop, btnSide1, btnSide2, btnReset;
+let video;
+let canvasPhoto, canvasOverlay;
+let ctxPhoto, ctxOverlay;
 
-let btnShowGuide, btnPrevStep, btnNextStep, wrapMethod;
+let resultBox, instructions;
+let btnTop, btnSide1, btnSide2, btnReset;
+let btnShowGuide, btnPrevStep, btnNextStep;
+
+let step1, step2, step3;
 
 let cvReady = false;
 
-// ✅ marker size in cm (change this to 10.0 if you use 10×10 marker)
-const MARKER_SIZE_CM = 5.0;
+// Marker size in cm
+const MARKER_SIZE_CM = 10.0;
 
-// ✅ Indian market wrap sheet sizes (cm)
+// Indian market sheets
 const INDIAN_WRAP_SIZES = [
   { name: "Small sheet", w: 50, h: 70 },
   { name: "Medium sheet", w: 70, h: 100 },
@@ -16,28 +21,30 @@ const INDIAN_WRAP_SIZES = [
   { name: "XL sheet", w: 120, h: 180 }
 ];
 
-// store results
-let topData = null;   // {L,W}
-let side1Data = null; // {H,W}
-let side2Data = null; // {H,L}
+// Measurement state
+let topData = null;
+let side1Data = null;
+let side2Data = null;
+let finalDims = null;
 
-// final dimensions
-let finalDims = null; // {L,W,H}
-
-// guide state
+// Guide state
 let guideStep = 0;
-let guideActive = false;
+let lastCapturedImage = null; // store last captured image for guide
 
 function onOpenCvReady() {
   cvReady = true;
-  console.log("✅ OpenCV Loaded");
   init();
 }
 
 async function init() {
   video = document.getElementById("video");
-  canvas = document.getElementById("canvas");
-  ctx = canvas.getContext("2d");
+
+  canvasPhoto = document.getElementById("canvasPhoto");
+  canvasOverlay = document.getElementById("canvasOverlay");
+
+  ctxPhoto = canvasPhoto.getContext("2d");
+  ctxOverlay = canvasOverlay.getContext("2d");
+
   resultBox = document.getElementById("result");
   instructions = document.getElementById("instructions");
 
@@ -46,11 +53,13 @@ async function init() {
   btnSide2 = document.getElementById("btnSide2");
   btnReset = document.getElementById("btnReset");
 
-  // wrapping guide controls
   btnShowGuide = document.getElementById("btnShowGuide");
   btnPrevStep = document.getElementById("btnPrevStep");
   btnNextStep = document.getElementById("btnNextStep");
-  wrapMethod = document.getElementById("wrapMethod");
+
+  step1 = document.getElementById("step1");
+  step2 = document.getElementById("step2");
+  step3 = document.getElementById("step3");
 
   await startCamera();
 
@@ -60,10 +69,11 @@ async function init() {
   btnReset.onclick = resetAll;
 
   btnShowGuide.onclick = startGuide;
-  btnPrevStep.onclick = () => changeStep(-1);
-  btnNextStep.onclick = () => changeStep(1);
+  btnPrevStep.onclick = () => changeGuideStep(-1);
+  btnNextStep.onclick = () => changeGuideStep(1);
 
-  showStatus("✅ Camera ready.\nCapture TOP view first.");
+  updateStepper(1);
+  showStatus("✅ Camera ready. Capture TOP view first.");
 }
 
 async function startCamera() {
@@ -74,8 +84,7 @@ async function startCamera() {
     });
     video.srcObject = stream;
   } catch (err) {
-    console.error(err);
-    showStatus("❌ Camera error: " + err.message + "\nUse HTTPS (GitHub Pages).");
+    showStatus("❌ Camera permission error. Open on HTTPS (GitHub Pages).");
   }
 }
 
@@ -85,7 +94,6 @@ function resetAll() {
   side2Data = null;
   finalDims = null;
 
-  guideActive = false;
   guideStep = 0;
   btnPrevStep.disabled = true;
   btnNextStep.disabled = true;
@@ -94,7 +102,10 @@ function resetAll() {
   btnSide1.disabled = true;
   btnSide2.disabled = true;
 
+  updateStepper(1);
   instructions.innerText = "STEP 1: Keep marker near object and capture TOP view.";
+
+  clearOverlay();
   showStatus("🔄 Reset done.\nCapture TOP view first.");
 }
 
@@ -104,23 +115,25 @@ function captureAndMeasure(mode) {
     return;
   }
 
-  // Disable guide while measuring
-  guideActive = false;
-  btnPrevStep.disabled = true;
-  btnNextStep.disabled = true;
+  // capture frame
+  canvasPhoto.width = video.videoWidth;
+  canvasPhoto.height = video.videoHeight;
+  canvasOverlay.width = video.videoWidth;
+  canvasOverlay.height = video.videoHeight;
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctxPhoto.drawImage(video, 0, 0, canvasPhoto.width, canvasPhoto.height);
+  lastCapturedImage = ctxPhoto.getImageData(0, 0, canvasPhoto.width, canvasPhoto.height);
 
-  showStatus(`⏳ Processing ${mode.toUpperCase()} photo...`);
+  clearOverlay();
+  showStatus(`⏳ Processing ${mode.toUpperCase()}...`);
 
   setTimeout(() => {
-    const obj = analyzeImage();
-    if (!obj) return;
+    const measured = analyzeImage();
 
-    const longSide = Math.max(obj.wCm, obj.hCm);
-    const shortSide = Math.min(obj.wCm, obj.hCm);
+    if (!measured) return;
+
+    const longSide = Math.max(measured.wCm, measured.hCm);
+    const shortSide = Math.min(measured.wCm, measured.hCm);
 
     if (mode === "top") {
       topData = { L: longSide, W: shortSide };
@@ -137,11 +150,15 @@ function captureAndMeasure(mode) {
     } else if (mode === "side2") {
       side2Data = { H: longSide, L: shortSide };
       btnSide2.disabled = true;
-      instructions.innerText = "✅ All photos captured. Final result calculated.";
+      instructions.innerText = "✅ Done! Measurement complete.";
     }
 
     computeFinal();
     showProgress();
+
+    if (finalDims) {
+      updateStepper(2); // measurement complete
+    }
   }, 80);
 }
 
@@ -155,9 +172,10 @@ function computeFinal() {
   finalDims = { L, W, H };
 }
 
-// ✅ Analysis (marker scale + object contour)
+// ----------- OPENCV ANALYSIS -----------
 function analyzeImage() {
-  let src = cv.imread(canvas);
+  let src = cv.imread(canvasPhoto);
+
   let gray = new cv.Mat();
   let blur = new cv.Mat();
   let edges = new cv.Mat();
@@ -171,7 +189,7 @@ function analyzeImage() {
   cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
   if (contours.size() < 2) {
-    showStatus("❌ Marker/Object not detected.\nKeep marker visible & improve lighting.");
+    showStatus("❌ Marker/Object not detected.\nTry better lighting.");
     cleanup(src, gray, blur, edges, contours, hierarchy);
     return null;
   }
@@ -186,7 +204,7 @@ function analyzeImage() {
   }
 
   if (items.length < 2) {
-    showStatus("❌ Not enough objects detected.\nMove closer to marker.");
+    showStatus("❌ Not enough objects detected.");
     cleanup(src, gray, blur, edges, contours, hierarchy);
     return null;
   }
@@ -198,6 +216,7 @@ function analyzeImage() {
   // marker = most square-like
   let markerRect = null;
   let bestSquareScore = Infinity;
+
   for (let i = 0; i < items.length; i++) {
     const r = items[i].rect;
     if (r.width < 30 || r.height < 30) continue;
@@ -210,7 +229,7 @@ function analyzeImage() {
   }
 
   if (!markerRect) {
-    showStatus("❌ Marker not detected.\nKeep marker clear, not blurred.");
+    showStatus("❌ Marker not detected.");
     cleanup(src, gray, blur, edges, contours, hierarchy);
     return null;
   }
@@ -221,42 +240,31 @@ function analyzeImage() {
   const wCm = objectRect.width / pxPerCm;
   const hCm = objectRect.height / pxPerCm;
 
-  // draw debug rectangles
-  cv.rectangle(src,
-    new cv.Point(objectRect.x, objectRect.y),
-    new cv.Point(objectRect.x + objectRect.width, objectRect.y + objectRect.height),
-    new cv.Scalar(0, 255, 0, 255),
-    4
-  );
-
-  cv.rectangle(src,
-    new cv.Point(markerRect.x, markerRect.y),
-    new cv.Point(markerRect.x + markerRect.width, markerRect.y + markerRect.height),
-    new cv.Scalar(255, 0, 0, 255),
-    4
-  );
-
-  cv.imshow(canvas, src);
+  // draw debug rectangle on overlay
+  clearOverlay();
+  drawRect(markerRect, "rgba(0,150,255,0.9)", 4);
+  drawRect(objectRect, "rgba(0,255,100,0.9)", 4);
 
   cleanup(src, gray, blur, edges, contours, hierarchy);
   return { wCm, hCm };
 }
 
+// ----------- UI TEXT -----------
 function showProgress() {
   let msg = "";
 
-  if (topData) msg += `✅ TOP VIEW\nL: ${topData.L.toFixed(2)} cm\nW: ${topData.W.toFixed(2)} cm\n\n`;
-  else msg += "📌 TOP VIEW pending...\n\n";
+  if (topData) msg += `✅ TOP\nL: ${topData.L.toFixed(2)} cm | W: ${topData.W.toFixed(2)} cm\n\n`;
+  else msg += "📌 TOP pending...\n\n";
 
-  if (side1Data) msg += `✅ SIDE 1\nH: ${side1Data.H.toFixed(2)} cm\nW: ${side1Data.W.toFixed(2)} cm\n\n`;
+  if (side1Data) msg += `✅ SIDE 1\nH: ${side1Data.H.toFixed(2)} cm | W: ${side1Data.W.toFixed(2)} cm\n\n`;
   else msg += "📌 SIDE 1 pending...\n\n";
 
-  if (side2Data) msg += `✅ SIDE 2\nH: ${side2Data.H.toFixed(2)} cm\nL: ${side2Data.L.toFixed(2)} cm\n\n`;
+  if (side2Data) msg += `✅ SIDE 2\nH: ${side2Data.H.toFixed(2)} cm | L: ${side2Data.L.toFixed(2)} cm\n\n`;
   else msg += "📌 SIDE 2 pending...\n\n";
 
   if (finalDims) {
-    msg += `🎯 FINAL DIMENSIONS\nL×W×H = ${finalDims.L.toFixed(2)} × ${finalDims.W.toFixed(2)} × ${finalDims.H.toFixed(2)} cm\n\n`;
-    msg += `✅ You can now click "Show Wrapping Guide"\n`;
+    msg += `🎯 FINAL\nL×W×H = ${finalDims.L.toFixed(2)} × ${finalDims.W.toFixed(2)} × ${finalDims.H.toFixed(2)} cm\n\n`;
+    msg += `Click "Show Guide" for wrapping steps.`;
   }
 
   showStatus(msg);
@@ -266,196 +274,161 @@ function showStatus(text) {
   resultBox.innerText = text;
 }
 
-// ------------------- WRAPPING GUIDE -------------------
+function updateStepper(stepNo) {
+  step1.classList.remove("active");
+  step2.classList.remove("active");
+  step3.classList.remove("active");
 
+  if (stepNo === 1) step1.classList.add("active");
+  if (stepNo === 2) step2.classList.add("active");
+  if (stepNo === 3) step3.classList.add("active");
+}
+
+// ----------- WRAPPING GUIDE (PHOTO OVERLAY) -----------
 function startGuide() {
   if (!finalDims) {
-    showStatus("❌ First complete measurement (TOP + SIDE1 + SIDE2).");
+    showStatus("❌ Complete measurement first.");
     return;
   }
 
-  if (wrapMethod.value !== "japaneseB") {
-    showStatus("⚠️ Only Japanese Fold (Method B) is enabled right now.");
-    return;
-  }
-
-  guideActive = true;
+  updateStepper(3);
   guideStep = 0;
 
   btnPrevStep.disabled = false;
   btnNextStep.disabled = false;
 
-  drawJapaneseGuide();
+  drawGuideStep();
 }
 
-function changeStep(delta) {
+function changeGuideStep(delta) {
   guideStep += delta;
   if (guideStep < 0) guideStep = 0;
   if (guideStep > 5) guideStep = 5;
-
-  if (guideActive) drawJapaneseGuide();
+  drawGuideStep();
 }
 
-function drawJapaneseGuide() {
-  const { L, W, H } = finalDims;
+function drawGuideStep() {
+  if (!finalDims) return;
 
-  // Required paper size for cuboid wrap
-  const margin = 3; // cm extra overlap
+  // restore photo
+  if (lastCapturedImage) ctxPhoto.putImageData(lastCapturedImage, 0, 0);
+  clearOverlay();
+
+  const { L, W, H } = finalDims;
+  const margin = 3;
   const paperW = W + 2 * H + margin;
   const paperL = L + 2 * H + margin;
 
-  // Indian market recommendations
   const bestSheet = getBestIndianWrap(paperL, paperW);
-  const roll = suggestWrapRoll(paperL, paperW);
 
-  // draw template
-  drawDiagram(paperL, paperW, L, W, H, guideStep);
-
-  const stepText = [
-    "Step 1: Place box at center of paper.",
-    "Step 2: Fold left and right long sides inward.",
-    "Step 3: Make diagonal corner tucks (triangle folds).",
-    "Step 4: Fold bottom side upward and align edges.",
-    "Step 5: Fold top side downward and tuck-lock flap.",
-    "Step 6: Apply minimal tape at marked positions."
+  const steps = [
+    "Step 1: Place object at center of paper.",
+    "Step 2: Fold left flap inward → then right flap inward.",
+    "Step 3: Fold corner triangles (Japanese tuck).",
+    "Step 4: Fold bottom flap upward.",
+    "Step 5: Fold top flap downward and tuck-lock.",
+    "Step 6: Apply tape (minimal points)."
   ];
 
-  let sheetText = "";
-  if (bestSheet) {
-    sheetText =
-      `🛒 Suggested wrap size (India): ${bestSheet.name} (${bestSheet.w}×${bestSheet.h} cm)\n` +
-      `Waste estimate: ${bestSheet.waste.toFixed(0)} cm²`;
-  } else {
-    sheetText = "❌ No standard sheet fits. Use roll or bigger custom sheet.";
+  // Draw big overlay title box
+  drawLabelBox(`Japanese Wrap Guide`, steps[guideStep]);
+
+  // Draw arrows + tape points (approx)
+  const w = canvasOverlay.width;
+  const h = canvasOverlay.height;
+
+  if (guideStep === 1) {
+    drawArrow(40, h / 2, w / 2 - 20, h / 2);
+    drawArrow(w - 40, h / 2, w / 2 + 20, h / 2);
   }
 
-  let rollText = "";
-  if (roll) {
-    rollText = `📏 Roll option: Buy ${roll.rollWidth} cm roll, cut length ≈ ${roll.cutLength.toFixed(1)} cm`;
+  if (guideStep === 2) {
+    // corner diagonal arrows
+    drawArrow(70, 180, 180, 70);
+    drawArrow(w - 70, 180, w - 180, 70);
+    drawArrow(70, h - 180, 180, h - 70);
+    drawArrow(w - 70, h - 180, w - 180, h - 70);
+  }
+
+  if (guideStep === 3) {
+    drawArrow(w / 2, h - 60, w / 2, h / 2 + 40);
+  }
+
+  if (guideStep === 4) {
+    drawArrow(w / 2, 60, w / 2, h / 2 - 40);
+  }
+
+  if (guideStep === 5) {
+    // tape points
+    drawDot(w / 2, h / 2 - 60);
+    drawDot(w / 2, h / 2 + 60);
+  }
+
+  let sheetText = "No standard sheet found.";
+  if (bestSheet) {
+    sheetText = `Suggested sheet: ${bestSheet.name} (${bestSheet.w}×${bestSheet.h} cm)`;
   }
 
   showStatus(
-    `🎌 Japanese Wrapping Guide (Method B)\n\n` +
+    `🎌 Wrapping Guide (Method B)\n\n` +
     `Required paper: ${paperL.toFixed(1)} × ${paperW.toFixed(1)} cm\n` +
-    `${sheetText}\n` +
-    `${rollText}\n\n` +
-    stepText[guideStep]
+    `${sheetText}\n\n` +
+    steps[guideStep]
   );
 }
 
-// ------------------- DRAWING -------------------
-
-function drawDiagram(paperL, paperW, boxL, boxW, boxH, step) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const pad = 30;
-  const maxDrawW = canvas.width - pad * 2;
-  const maxDrawH = canvas.height - pad * 2;
-
-  const scale = Math.min(maxDrawW / paperL, maxDrawH / paperW);
-
-  const pw = paperL * scale;
-  const ph = paperW * scale;
-
-  const x0 = (canvas.width - pw) / 2;
-  const y0 = (canvas.height - ph) / 2;
-
-  // Paper outline
-  ctx.strokeStyle = "#000";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(x0, y0, pw, ph);
-
-  // Box placement (center)
-  const boxX = x0 + (pw - boxL * scale) / 2;
-  const boxY = y0 + (ph - boxW * scale) / 2;
-  const bw = boxL * scale;
-  const bh = boxW * scale;
-
-  ctx.strokeStyle = "#007bff";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(boxX, boxY, bw, bh);
-
-  // Fold lines at H distance
-  const foldLeft = boxX - boxH * scale;
-  const foldRight = boxX + bw + boxH * scale;
-  const foldTop = boxY - boxH * scale;
-  const foldBottom = boxY + bh + boxH * scale;
-
-  // dashed fold lines
-  ctx.setLineDash([10, 7]);
-  ctx.strokeStyle = "#555";
-  ctx.lineWidth = 2;
-
-  // vertical folds
-  drawLine(foldLeft, y0, foldLeft, y0 + ph);
-  drawLine(foldRight, y0, foldRight, y0 + ph);
-
-  // horizontal folds
-  drawLine(x0, foldTop, x0 + pw, foldTop);
-  drawLine(x0, foldBottom, x0 + pw, foldBottom);
-
-  ctx.setLineDash([]);
-
-  // Corner triangles
-  if (step >= 2) {
-    ctx.strokeStyle = "orange";
-    ctx.lineWidth = 3;
-
-    drawLine(foldLeft, foldTop, boxX, boxY);
-    drawLine(foldRight, foldTop, boxX + bw, boxY);
-    drawLine(foldLeft, foldBottom, boxX, boxY + bh);
-    drawLine(foldRight, foldBottom, boxX + bw, boxY + bh);
-  }
-
-  // Tape points
-  if (step >= 5) {
-    ctx.fillStyle = "red";
-    drawDot(boxX + bw / 2, boxY - 15);
-    drawDot(boxX + bw / 2, boxY + bh + 15);
-  }
-
-  // Arrows
-  if (step === 1) {
-    drawArrow(foldLeft - 20, boxY + bh / 2, boxX + 10, boxY + bh / 2);
-    drawArrow(foldRight + 20, boxY + bh / 2, boxX + bw - 10, boxY + bh / 2);
-  }
-
-  if (step === 3) drawArrow(boxX + bw / 2, foldBottom + 30, boxX + bw / 2, boxY + bh - 10);
-  if (step === 4) drawArrow(boxX + bw / 2, foldTop - 30, boxX + bw / 2, boxY + 10);
+// ----------- DRAW HELPERS -----------
+function clearOverlay() {
+  ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
 }
 
-function drawLine(x1, y1, x2, y2) {
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-}
-
-function drawDot(x, y) {
-  ctx.beginPath();
-  ctx.arc(x, y, 7, 0, Math.PI * 2);
-  ctx.fill();
+function drawRect(r, color, thickness) {
+  ctxOverlay.strokeStyle = color;
+  ctxOverlay.lineWidth = thickness;
+  ctxOverlay.strokeRect(r.x, r.y, r.width, r.height);
 }
 
 function drawArrow(x1, y1, x2, y2) {
-  ctx.strokeStyle = "green";
-  ctx.lineWidth = 4;
-  drawLine(x1, y1, x2, y2);
+  ctxOverlay.strokeStyle = "rgba(0,255,0,0.9)";
+  ctxOverlay.lineWidth = 6;
+
+  ctxOverlay.beginPath();
+  ctxOverlay.moveTo(x1, y1);
+  ctxOverlay.lineTo(x2, y2);
+  ctxOverlay.stroke();
 
   const angle = Math.atan2(y2 - y1, x2 - x1);
-  const headLen = 15;
+  const headLen = 18;
 
-  ctx.beginPath();
-  ctx.moveTo(x2, y2);
-  ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
-  ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
-  ctx.closePath();
-  ctx.fillStyle = "green";
-  ctx.fill();
+  ctxOverlay.fillStyle = "rgba(0,255,0,0.9)";
+  ctxOverlay.beginPath();
+  ctxOverlay.moveTo(x2, y2);
+  ctxOverlay.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 7), y2 - headLen * Math.sin(angle - Math.PI / 7));
+  ctxOverlay.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 7), y2 - headLen * Math.sin(angle + Math.PI / 7));
+  ctxOverlay.closePath();
+  ctxOverlay.fill();
 }
 
-// ------------------- MARKET SIZE HELPERS -------------------
+function drawDot(x, y) {
+  ctxOverlay.fillStyle = "rgba(255,0,0,0.95)";
+  ctxOverlay.beginPath();
+  ctxOverlay.arc(x, y, 10, 0, Math.PI * 2);
+  ctxOverlay.fill();
+}
 
+function drawLabelBox(title, stepText) {
+  ctxOverlay.fillStyle = "rgba(0,0,0,0.55)";
+  ctxOverlay.fillRect(10, 10, canvasOverlay.width - 20, 90);
+
+  ctxOverlay.fillStyle = "white";
+  ctxOverlay.font = "bold 18px Arial";
+  ctxOverlay.fillText(title, 22, 38);
+
+  ctxOverlay.font = "14px Arial";
+  ctxOverlay.fillText(stepText, 22, 68);
+}
+
+// ----------- MARKET HELPERS -----------
 function getBestIndianWrap(reqL, reqW) {
   let best = null;
 
@@ -469,35 +442,13 @@ function getBestIndianWrap(reqL, reqW) {
       const waste = sheetArea - usedArea;
 
       if (!best || waste < best.waste) {
-        best = {
-          ...sheet,
-          waste,
-          sheetArea,
-          usedArea,
-          rotated: fitsRotated && !fitsNormal
-        };
+        best = { ...sheet, waste };
       }
     }
   }
-
   return best;
 }
 
-function suggestWrapRoll(reqL, reqW) {
-  const rollWidths = [50, 70, 100];
-
-  for (let rw of rollWidths) {
-    const fits = (rw >= reqW) || (rw >= reqL);
-    if (fits) {
-      const cutLength = rw >= reqW ? reqL : reqW;
-      return { rollWidth: rw, cutLength };
-    }
-  }
-
-  return null;
-}
-
-// cleanup OpenCV mats
 function cleanup(...mats) {
   mats.forEach(m => {
     if (m && typeof m.delete === "function") m.delete();
