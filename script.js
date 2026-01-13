@@ -12,8 +12,8 @@ let step1, step2, step3;
 
 let cvReady = false;
 
-// ✅ Marker size in cm (change to 10.0 if 10×10 marker)
-const MARKER_SIZE_CM = 10.0;
+// ✅ Marker size in cm
+const MARKER_SIZE_CM = 5.0;
 
 // ✅ Indian market standard wrap sheets (cm)
 const INDIAN_WRAP_SIZES = [
@@ -23,15 +23,18 @@ const INDIAN_WRAP_SIZES = [
   { name: "XL sheet", w: 120, h: 180 }
 ];
 
-// Measurement state
+// measurement values
 let topData = null;
 let side1Data = null;
 let side2Data = null;
 let finalDims = null;
 
-// Guide state
+// store images separately
+let topCapturedImage = null;
+let side1CapturedImage = null;
+let side2CapturedImage = null;
+
 let guideStep = 0;
-let lastCapturedImage = null;
 let guideReady = false;
 
 function onOpenCvReady() {
@@ -44,6 +47,7 @@ async function init() {
 
   canvasPhoto = document.getElementById("canvasPhoto");
   canvasOverlay = document.getElementById("canvasOverlay");
+
   ctxPhoto = canvasPhoto.getContext("2d");
   ctxOverlay = canvasOverlay.getContext("2d");
 
@@ -108,6 +112,10 @@ function resetAll() {
   side2Data = null;
   finalDims = null;
 
+  topCapturedImage = null;
+  side1CapturedImage = null;
+  side2CapturedImage = null;
+
   guideStep = 0;
   guideReady = false;
 
@@ -133,14 +141,18 @@ function captureAndMeasure(mode) {
     return;
   }
 
-  // capture frame
+  // capture
   canvasPhoto.width = video.videoWidth;
   canvasPhoto.height = video.videoHeight;
   canvasOverlay.width = video.videoWidth;
   canvasOverlay.height = video.videoHeight;
 
   ctxPhoto.drawImage(video, 0, 0, canvasPhoto.width, canvasPhoto.height);
-  lastCapturedImage = ctxPhoto.getImageData(0, 0, canvasPhoto.width, canvasPhoto.height);
+  const img = ctxPhoto.getImageData(0, 0, canvasPhoto.width, canvasPhoto.height);
+
+  if (mode === "top") topCapturedImage = img;
+  if (mode === "side1") side1CapturedImage = img;
+  if (mode === "side2") side2CapturedImage = img;
 
   clearOverlay();
   showStatus(`⏳ Processing ${mode.toUpperCase()}...`);
@@ -157,17 +169,19 @@ function captureAndMeasure(mode) {
       btnTop.disabled = true;
       btnSide1.disabled = false;
       instructions.innerText = "STEP 2: Capture SIDE 1 view (marker visible).";
+    }
 
-    } else if (mode === "side1") {
+    if (mode === "side1") {
       side1Data = { H: longSide, W: shortSide };
       btnSide1.disabled = true;
       btnSide2.disabled = false;
       instructions.innerText = "STEP 3: Rotate object 90° and capture SIDE 2 view.";
+    }
 
-    } else if (mode === "side2") {
+    if (mode === "side2") {
       side2Data = { H: longSide, L: shortSide };
       btnSide2.disabled = true;
-      instructions.innerText = "✅ Measurement completed. Generate wrapping guide.";
+      instructions.innerText = "✅ Measurement completed. Generate cuboid wrapping guide.";
     }
 
     computeFinal();
@@ -192,7 +206,7 @@ function computeFinal() {
   finalDims = { L, W, H };
 }
 
-// ----------- OPENCV ANALYSIS -----------
+// ----------- OPENCV ANALYSIS (marker + contour) -----------
 function analyzeImage() {
   let src = cv.imread(canvasPhoto);
 
@@ -229,7 +243,6 @@ function analyzeImage() {
     return null;
   }
 
-  // biggest = object
   items.sort((a, b) => b.area - a.area);
   let objectRect = items[0].rect;
 
@@ -260,7 +273,6 @@ function analyzeImage() {
   const wCm = objectRect.width / pxPerCm;
   const hCm = objectRect.height / pxPerCm;
 
-  // overlay debug rectangles
   clearOverlay();
   drawRect(markerRect, "rgba(0,150,255,0.95)", 5);
   drawRect(objectRect, "rgba(0,255,100,0.95)", 5);
@@ -289,23 +301,26 @@ function showProgress() {
     const bestSheet = getBestIndianWrap(paper.paperL, paper.paperW);
     const roll = suggestWrapRoll(paper.paperL, paper.paperW);
 
-    const sheetText = bestSheet
-      ? `🛒 Best sheet: ${bestSheet.name} (${bestSheet.w}×${bestSheet.h} cm) | Waste: ${bestSheet.wastePct.toFixed(1)}%`
-      : "🛒 Best sheet: Not found (use roll)";
-
-    const rollText = roll
-      ? `📏 Roll option: ${roll.rollWidth} cm roll, cut length ≈ ${roll.cutLength.toFixed(1)} cm`
-      : "";
-
     const tape = estimateTape(L, W, H);
     const score = materialSaverScore(bestSheet?.wastePct ?? 50);
 
-    msg += `🎯 FINAL DIMENSIONS\nL×W×H = ${L.toFixed(2)} × ${W.toFixed(2)} × ${H.toFixed(2)} cm\n\n`;
+    msg += `🎯 FINAL DIMENSIONS (Cuboid)\nL×W×H = ${L.toFixed(2)} × ${W.toFixed(2)} × ${H.toFixed(2)} cm\n\n`;
     msg += `📄 Required Paper: ${paper.paperL.toFixed(1)} × ${paper.paperW.toFixed(1)} cm\n`;
-    msg += `${sheetText}\n${rollText}\n\n`;
-    msg += `🏆 Material Saver Score: ${score}/100\n`;
+
+    if (bestSheet) {
+      msg += `🛒 Best sheet: ${bestSheet.name} (${bestSheet.w}×${bestSheet.h} cm)\n`;
+      msg += `Waste: ${bestSheet.wastePct.toFixed(1)}%\n`;
+    } else {
+      msg += `🛒 Best sheet: Not found (use roll)\n`;
+    }
+
+    if (roll) {
+      msg += `📏 Roll option: ${roll.rollWidth} cm roll, cut length ≈ ${roll.cutLength.toFixed(1)} cm\n`;
+    }
+
+    msg += `\n🏆 Material Saver Score: ${score}/100\n`;
     msg += `🧻 Tape Minimizer: ${tape.strips} strips (~${tape.totalLengthCm.toFixed(1)} cm)\n\n`;
-    msg += `✅ Click "Generate Guide" to view folding steps.`;
+    msg += `✅ Click "Generate Cuboid Guide" for folding overlay.`;
   }
 
   showStatus(msg);
@@ -315,20 +330,14 @@ function showStatus(text) {
   resultBox.innerText = text;
 }
 
-function updateStepper(stepNo) {
-  step1.classList.remove("active");
-  step2.classList.remove("active");
-  step3.classList.remove("active");
-
-  if (stepNo === 1) step1.classList.add("active");
-  if (stepNo === 2) step2.classList.add("active");
-  if (stepNo === 3) step3.classList.add("active");
-}
-
-// ----------- GUIDE -----------
+// ----------- GUIDE (ALWAYS TOP PHOTO) -----------
 function startGuide() {
   if (!finalDims) {
     showStatus("❌ Complete measurement first.");
+    return;
+  }
+  if (!topCapturedImage) {
+    showStatus("❌ TOP photo not available. Capture TOP view again.");
     return;
   }
 
@@ -349,10 +358,10 @@ function changeGuideStep(delta) {
 }
 
 function drawGuideStep() {
-  if (!finalDims) return;
+  if (!finalDims || !topCapturedImage) return;
 
-  // restore photo
-  if (lastCapturedImage) ctxPhoto.putImageData(lastCapturedImage, 0, 0);
+  // restore TOP photo always
+  ctxPhoto.putImageData(topCapturedImage, 0, 0);
   clearOverlay();
 
   const { L, W, H } = finalDims;
@@ -360,113 +369,140 @@ function drawGuideStep() {
 
   const bestSheet = getBestIndianWrap(paper.paperL, paper.paperW);
 
-  let methodName = wrapMethod.value === "japaneseB" ? "Japanese Fold (Method B)" : "Simple Fold (Method A)";
-
-  const stepsB = [
-    "Step 1: Place object at center of wrapping sheet.",
-    "Step 2: Fold left flap inward → then right flap inward.",
-    "Step 3: Make corner triangle folds (tuck in).",
-    "Step 4: Fold bottom flap upward tightly.",
-    "Step 5: Fold top flap downward and tuck-lock.",
-    "Step 6: Apply tape at marked points (minimum)."
+  const methodBSteps = [
+    "Step 1: Place cuboid at center of paper.",
+    "Step 2: Fold left & right sides inward (H folds).",
+    "Step 3: Fold corner triangles and tuck.",
+    "Step 4: Fold bottom flap upward (H).",
+    "Step 5: Fold top flap downward + lock tuck.",
+    "Step 6: Tape at marked points (min tape)."
   ];
 
-  const stepsA = [
-    "Step 1: Place object at center of wrapping sheet.",
-    "Step 2: Fold left flap over the object.",
-    "Step 3: Fold right flap over and overlap slightly.",
+  const methodASteps = [
+    "Step 1: Place cuboid at center.",
+    "Step 2: Fold left side over cuboid.",
+    "Step 3: Fold right side overlap.",
     "Step 4: Fold bottom flap upward.",
     "Step 5: Fold top flap downward.",
-    "Step 6: Tape the seam and 1 edge."
+    "Step 6: Tape seam and 1 edge."
   ];
 
-  const steps = wrapMethod.value === "japaneseB" ? stepsB : stepsA;
+  const steps = wrapMethod.value === "japaneseB" ? methodBSteps : methodASteps;
 
-  drawLabelBox("WrapIt Guide", methodName, steps[guideStep]);
+  // --- Draw cuboid net overlay based on L,W,H
+  drawCuboidNetOverlay(L, W, H, guideStep, wrapMethod.value);
 
-  // Nice pseudo AR overlay
-  const w = canvasOverlay.width;
-  const h = canvasOverlay.height;
-
-  // Draw fold zones shading (looks pro)
-  if (guideStep >= 1) {
-    shadeRegion(0, 0, w * 0.20, h, "rgba(0,255,255,0.10)");
-    shadeRegion(w * 0.80, 0, w * 0.20, h, "rgba(0,255,255,0.10)");
-  }
-
-  if (guideStep >= 3) {
-    shadeRegion(0, h * 0.78, w, h * 0.22, "rgba(255,255,0,0.10)");
-  }
-
-  if (guideStep >= 4) {
-    shadeRegion(0, 0, w, h * 0.22, "rgba(255,255,0,0.10)");
-  }
-
-  // arrows depending on step
-  if (guideStep === 1) {
-    drawArrow(30, h / 2, w / 2 - 30, h / 2);
-    drawArrow(w - 30, h / 2, w / 2 + 30, h / 2);
-    drawText("Fold sides", w / 2 - 45, h / 2 - 20);
-  }
-
-  if (guideStep === 2 && wrapMethod.value === "japaneseB") {
-    drawArrow(80, 180, 200, 80);
-    drawArrow(w - 80, 180, w - 200, 80);
-    drawArrow(80, h - 180, 200, h - 80);
-    drawArrow(w - 80, h - 180, w - 200, h - 80);
-    drawText("Fold corners", 18, 130);
-  }
-
-  if (guideStep === 3) {
-    drawArrow(w / 2, h - 40, w / 2, h / 2 + 60);
-    drawText("Fold up", w / 2 - 30, h - 50);
-  }
-
-  if (guideStep === 4) {
-    drawArrow(w / 2, 40, w / 2, h / 2 - 60);
-    drawText("Fold down", w / 2 - 35, 35);
-  }
-
-  if (guideStep === 5) {
-    drawDot(w / 2, h / 2 - 60);
-    drawDot(w / 2, h / 2 + 60);
-    drawText("Tape here", w / 2 - 35, h / 2 - 75);
-  }
+  // Title overlay box
+  drawLabelBox("Cuboid Wrapping Guide", steps[guideStep]);
 
   let sheetText = bestSheet
     ? `Best sheet: ${bestSheet.name} (${bestSheet.w}×${bestSheet.h} cm), Waste ~${bestSheet.wastePct.toFixed(1)}%`
-    : "Best sheet not found (use roll).";
+    : `Best sheet not found, use roll.`;
 
   showStatus(
-    `📦 Wrapping Plan Ready\n\n` +
-    `Method: ${methodName}\n` +
+    `📦 WrapIt Cuboid Guide\n\n` +
+    `Method: ${wrapMethod.value === "japaneseB" ? "Japanese Fold (B)" : "Simple Fold (A)"}\n` +
     `Paper Required: ${paper.paperL.toFixed(1)} × ${paper.paperW.toFixed(1)} cm\n` +
     `${sheetText}\n\n` +
     steps[guideStep]
   );
 }
 
+// ----------- CUBOID NET OVERLAY -----------
+function drawCuboidNetOverlay(L, W, H, step, method) {
+  const w = canvasOverlay.width;
+  const h = canvasOverlay.height;
+
+  // Draw a "net template" centered on photo
+  // Scale based on ratios - not real-world, but proportional and clear.
+  const pad = Math.min(w, h) * 0.12;
+
+  // base rectangle size based on L:W
+  const baseW = (w - 2 * pad) * 0.52;
+  const baseH = baseW * (W / L);
+
+  // clamp
+  const maxBaseH = (h - 2 * pad) * 0.45;
+  const finalBaseH = Math.min(baseH, maxBaseH);
+  const finalBaseW = finalBaseH * (L / W);
+
+  // flap thickness depends on H
+  const flap = Math.min(w, h) * 0.13;
+
+  const x = (w - finalBaseW) / 2;
+  const y = (h - finalBaseH) / 2;
+
+  // zones:
+  const leftFlap = { x: x - flap, y: y, w: flap, h: finalBaseH };
+  const rightFlap = { x: x + finalBaseW, y: y, w: flap, h: finalBaseH };
+  const topFlap = { x: x, y: y - flap, w: finalBaseW, h: flap };
+  const bottomFlap = { x: x, y: y + finalBaseH, w: finalBaseW, h: flap };
+  const base = { x, y, w: finalBaseW, h: finalBaseH };
+
+  // Draw base outline
+  drawBoxRect(base, "rgba(0,120,255,0.95)", 5);
+  drawText("Base (L×W)", base.x + 10, base.y + 22);
+
+  // Step-based shading & arrows:
+  if (step >= 1) {
+    shadeRegion(leftFlap, "rgba(0,255,255,0.14)");
+    shadeRegion(rightFlap, "rgba(0,255,255,0.14)");
+    drawText("Side folds (H)", leftFlap.x + 6, leftFlap.y + 20);
+    drawArrow(leftFlap.x + 8, leftFlap.y + leftFlap.h / 2, base.x + 8, base.y + base.h / 2);
+    drawArrow(rightFlap.x + rightFlap.w - 8, rightFlap.y + rightFlap.h / 2, base.x + base.w - 8, base.y + base.h / 2);
+  } else {
+    shadeRegion(leftFlap, "rgba(255,255,255,0.06)");
+    shadeRegion(rightFlap, "rgba(255,255,255,0.06)");
+  }
+
+  // Corner triangles for Japanese
+  if (method === "japaneseB" && step >= 2) {
+    drawCornerTriangle(base.x, base.y, flap, "TL");
+    drawCornerTriangle(base.x + base.w, base.y, flap, "TR");
+    drawCornerTriangle(base.x, base.y + base.h, flap, "BL");
+    drawCornerTriangle(base.x + base.w, base.y + base.h, flap, "BR");
+    drawText("Corner tucks", base.x + base.w + 10, base.y + 26);
+  }
+
+  if (step >= 3) {
+    shadeRegion(bottomFlap, "rgba(255,255,0,0.14)");
+    drawText("Bottom fold (H)", bottomFlap.x + 10, bottomFlap.y + 24);
+    drawArrow(bottomFlap.x + bottomFlap.w / 2, bottomFlap.y + bottomFlap.h - 10, base.x + base.w / 2, base.y + base.h - 10);
+  }
+
+  if (step >= 4) {
+    shadeRegion(topFlap, "rgba(255,255,0,0.14)");
+    drawText("Top fold (H)", topFlap.x + 10, topFlap.y + 24);
+    drawArrow(topFlap.x + topFlap.w / 2, topFlap.y + 10, base.x + base.w / 2, base.y + 10);
+  }
+
+  if (step >= 5) {
+    drawDot(base.x + base.w / 2, base.y - 20);
+    drawDot(base.x + base.w / 2, base.y + base.h + 20);
+    drawText("Tape", base.x + base.w / 2 - 18, base.y - 30);
+  }
+
+  // fold lines (dashed)
+  drawDashedLine(base.x, base.y, base.x + base.w, base.y);
+  drawDashedLine(base.x, base.y + base.h, base.x + base.w, base.y + base.h);
+  drawDashedLine(base.x, base.y, base.x, base.y + base.h);
+  drawDashedLine(base.x + base.w, base.y, base.x + base.w, base.y + base.h);
+}
+
 // ----------- NOVELTY CALCULATIONS -----------
 function materialSaverScore(wastePct) {
-  // Lower waste = higher score
   let score = Math.max(0, 100 - wastePct);
   return Math.round(score);
 }
 
 function estimateTape(L, W, H) {
-  // Prototype model: 2 strips for Japanese fold, 3 for simple fold
   const strips = wrapMethod?.value === "simpleA" ? 3 : 2;
-
-  // estimate each tape strip length ~ (W/3 + 2cm)
   const avgStrip = (Math.min(L, W) / 3) + 2;
-  return {
-    strips,
-    totalLengthCm: strips * avgStrip
-  };
+  return { strips, totalLengthCm: strips * avgStrip };
 }
 
 function getRequiredPaper(L, W, H) {
-  const margin = 3; // cm overlap
+  const margin = 3;
   const paperW = W + 2 * H + margin;
   const paperL = L + 2 * H + margin;
   return { paperL, paperW, margin };
@@ -491,7 +527,6 @@ function getBestIndianWrap(reqL, reqW) {
       }
     }
   }
-
   return best;
 }
 
@@ -508,32 +543,30 @@ function suggestWrapRoll(reqL, reqW) {
   return null;
 }
 
-// ----------- DOWNLOAD FEATURES -----------
+// ----------- DOWNLOADS -----------
 function downloadGuidePNG() {
   if (!guideReady) return;
   const merged = mergeCanvases();
-  downloadCanvas(merged, "wrapit_guide.png");
+  downloadCanvas(merged, "wrapit_cuboid_guide.png");
 }
 
 function downloadSummaryPNG() {
   if (!finalDims) return;
 
-  // create summary card canvas
   const c = document.createElement("canvas");
   c.width = 900;
-  c.height = 520;
+  c.height = 540;
   const g = c.getContext("2d");
 
-  // background
   g.fillStyle = "#ffffff";
   g.fillRect(0, 0, c.width, c.height);
 
   g.fillStyle = "#2b6fff";
-  g.fillRect(0, 0, c.width, 90);
+  g.fillRect(0, 0, c.width, 92);
 
   g.fillStyle = "#fff";
   g.font = "bold 34px Arial";
-  g.fillText("WrapIt Summary Card", 24, 58);
+  g.fillText("WrapIt - Cuboid Summary", 24, 60);
 
   const { L, W, H } = finalDims;
   const paper = getRequiredPaper(L, W, H);
@@ -542,24 +575,24 @@ function downloadSummaryPNG() {
 
   g.fillStyle = "#000";
   g.font = "bold 26px Arial";
-  g.fillText(`Object Dimensions: ${L.toFixed(1)} × ${W.toFixed(1)} × ${H.toFixed(1)} cm`, 24, 150);
+  g.fillText(`Dimensions (L×W×H): ${L.toFixed(1)} × ${W.toFixed(1)} × ${H.toFixed(1)} cm`, 24, 160);
 
   g.font = "22px Arial";
-  g.fillText(`Required Paper: ${paper.paperL.toFixed(1)} × ${paper.paperW.toFixed(1)} cm`, 24, 205);
+  g.fillText(`Paper Required: ${paper.paperL.toFixed(1)} × ${paper.paperW.toFixed(1)} cm`, 24, 220);
 
   if (bestSheet) {
-    g.fillText(`Suggested Sheet (India): ${bestSheet.name} (${bestSheet.w}×${bestSheet.h} cm)`, 24, 255);
-    g.fillText(`Estimated Waste: ${bestSheet.wastePct.toFixed(1)}%`, 24, 305);
+    g.fillText(`Suggested Sheet: ${bestSheet.name} (${bestSheet.w}×${bestSheet.h} cm)`, 24, 275);
+    g.fillText(`Waste Estimate: ${bestSheet.wastePct.toFixed(1)}%`, 24, 320);
   } else {
-    g.fillText(`Suggested Sheet: Use roll / custom large sheet`, 24, 255);
+    g.fillText(`Suggested Sheet: Use roll / bigger custom sheet`, 24, 275);
   }
 
   g.font = "bold 26px Arial";
-  g.fillText(`Material Saver Score: ${score}/100`, 24, 370);
+  g.fillText(`Material Saver Score: ${score}/100`, 24, 390);
 
   g.font = "18px Arial";
   g.fillStyle = "#444";
-  g.fillText(`Prototype note: Measurement uses 3-view marker calibration + contour detection.`, 24, 440);
+  g.fillText(`Note: Prototype uses marker-calibrated 3-view monocular measurement.`, 24, 465);
 
   downloadCanvas(c, "wrapit_summary.png");
 }
@@ -581,7 +614,7 @@ function downloadCanvas(canvasEl, filename) {
   link.click();
 }
 
-// ----------- OVERLAY DRAWING -----------
+// ----------- DRAW HELPERS -----------
 function clearOverlay() {
   ctxOverlay.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
 }
@@ -590,6 +623,35 @@ function drawRect(r, color, thickness) {
   ctxOverlay.strokeStyle = color;
   ctxOverlay.lineWidth = thickness;
   ctxOverlay.strokeRect(r.x, r.y, r.width, r.height);
+}
+
+function drawBoxRect(r, color, thickness) {
+  ctxOverlay.strokeStyle = color;
+  ctxOverlay.lineWidth = thickness;
+  ctxOverlay.strokeRect(r.x, r.y, r.w, r.h);
+}
+
+function shadeRegion(r, fill) {
+  ctxOverlay.fillStyle = fill;
+  ctxOverlay.fillRect(r.x, r.y, r.w, r.h);
+}
+
+function drawText(text, x, y) {
+  ctxOverlay.fillStyle = "rgba(0,0,0,0.78)";
+  ctxOverlay.font = "bold 16px Arial";
+  ctxOverlay.fillText(text, x, y);
+}
+
+function drawDashedLine(x1, y1, x2, y2) {
+  ctxOverlay.save();
+  ctxOverlay.setLineDash([10, 8]);
+  ctxOverlay.strokeStyle = "rgba(255,255,255,0.55)";
+  ctxOverlay.lineWidth = 2;
+  ctxOverlay.beginPath();
+  ctxOverlay.moveTo(x1, y1);
+  ctxOverlay.lineTo(x2, y2);
+  ctxOverlay.stroke();
+  ctxOverlay.restore();
 }
 
 function drawArrow(x1, y1, x2, y2) {
@@ -620,30 +682,46 @@ function drawDot(x, y) {
   ctxOverlay.fill();
 }
 
-function shadeRegion(x, y, w, h, fill) {
-  ctxOverlay.fillStyle = fill;
-  ctxOverlay.fillRect(x, y, w, h);
+function drawCornerTriangle(x, y, size, type) {
+  ctxOverlay.strokeStyle = "rgba(255,165,0,0.95)";
+  ctxOverlay.lineWidth = 4;
+  ctxOverlay.beginPath();
+
+  if (type === "TL") {
+    ctxOverlay.moveTo(x, y);
+    ctxOverlay.lineTo(x - size, y);
+    ctxOverlay.lineTo(x, y - size);
+  }
+  if (type === "TR") {
+    ctxOverlay.moveTo(x, y);
+    ctxOverlay.lineTo(x + size, y);
+    ctxOverlay.lineTo(x, y - size);
+  }
+  if (type === "BL") {
+    ctxOverlay.moveTo(x, y);
+    ctxOverlay.lineTo(x - size, y);
+    ctxOverlay.lineTo(x, y + size);
+  }
+  if (type === "BR") {
+    ctxOverlay.moveTo(x, y);
+    ctxOverlay.lineTo(x + size, y);
+    ctxOverlay.lineTo(x, y + size);
+  }
+
+  ctxOverlay.closePath();
+  ctxOverlay.stroke();
 }
 
-function drawText(text, x, y) {
-  ctxOverlay.fillStyle = "rgba(0,0,0,0.75)";
-  ctxOverlay.font = "bold 16px Arial";
-  ctxOverlay.fillText(text, x, y);
-}
-
-function drawLabelBox(title, methodName, stepText) {
+function drawLabelBox(title, stepText) {
   ctxOverlay.fillStyle = "rgba(0,0,0,0.55)";
-  ctxOverlay.fillRect(10, 10, canvasOverlay.width - 20, 120);
+  ctxOverlay.fillRect(10, 10, canvasOverlay.width - 20, 90);
 
   ctxOverlay.fillStyle = "white";
   ctxOverlay.font = "bold 20px Arial";
   ctxOverlay.fillText(title, 22, 40);
 
-  ctxOverlay.font = "bold 14px Arial";
-  ctxOverlay.fillText(methodName, 22, 66);
-
   ctxOverlay.font = "14px Arial";
-  ctxOverlay.fillText(stepText, 22, 96);
+  ctxOverlay.fillText(stepText, 22, 68);
 }
 
 // ----------- STEPPER -----------
