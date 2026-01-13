@@ -13,7 +13,7 @@ let step1, step2, step3;
 let cvReady = false;
 
 // ✅ Marker size in cm
-const MARKER_SIZE_CM = 5.0;
+const MARKER_SIZE_CM = 10.0;
 
 // ✅ Indian market standard wrap sheets (cm)
 const INDIAN_WRAP_SIZES = [
@@ -741,3 +741,4 @@ function cleanup(...mats) {
     if (m && typeof m.delete === "function") m.delete();
   });
 }
+
