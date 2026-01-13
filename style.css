@@ -6,7 +6,7 @@ body {
 }
 
 .app {
-  max-width: 520px;
+  max-width: 560px;
   margin: auto;
   padding: 14px;
 }
@@ -76,7 +76,7 @@ button {
   padding: 12px 14px;
   border: none;
   border-radius: 14px;
-  font-size: 14px;
+  font-size: 13px;
   background: #2b6fff;
   color: white;
   cursor: pointer;
@@ -158,7 +158,7 @@ select {
 }
 
 .step {
-  width: 64px;
+  width: 70px;
   height: 58px;
   border-radius: 16px;
   border: 2px solid #bbb;
