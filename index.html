@@ -19,7 +19,7 @@
         <h1>WrapIt</h1>
         <p>Measure + Wrapping Plan (Cuboid prototype)</p>
       </div>
-      <span class="badge">v1.2</span>
+      <span class="badge">v1.3</span>
     </header>
 
     <div class="stepper">
@@ -53,6 +53,14 @@
 
     <div class="card">
       <h2 class="sectionTitle">Wrapping Guide</h2>
+
+      <label class="label">Guide view mode:</label>
+      <select id="guideView">
+        <option value="template" selected>Template View (Recommended)</option>
+        <option value="overlay">Overlay View (On Photo)</option>
+      </select>
+
+      <canvas id="canvasTemplate" style="width:100%; margin-top:12px; border-radius:18px; border:2px solid #ddd; display:none;"></canvas>
 
       <label class="label">Choose wrap method:</label>
       <select id="wrapMethod">
