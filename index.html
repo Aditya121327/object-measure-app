@@ -2,58 +2,63 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>WrapIt - Measurement + Wrapping Guide</title>
+  <title>WrapIt - Smart Wrapping Assistant</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <link rel="stylesheet" href="style.css" />
-
-  <!-- OpenCV -->
   <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
-
-  <!-- Main script -->
   <script src="script.js" defer></script>
 </head>
 
 <body>
-  <h2>WrapIt Prototype</h2>
+  <div class="app">
+    <h2>WrapIt</h2>
+    <p class="subtitle">Measure object & guide Japanese gift wrap (Prototype)</p>
 
-  <p class="note" id="instructions">
-    STEP 1: Keep marker near object and capture TOP view.
-  </p>
+    <!-- Stepper -->
+    <div class="stepper">
+      <div class="step active" id="step1">1<br><span>Capture</span></div>
+      <div class="line"></div>
+      <div class="step" id="step2">2<br><span>Measure</span></div>
+      <div class="line"></div>
+      <div class="step" id="step3">3<br><span>Wrap</span></div>
+    </div>
 
-  <video id="video" autoplay playsinline></video>
+    <p class="note" id="instructions">
+      STEP 1: Keep marker near object and capture TOP view.
+    </p>
 
-  <div class="btns">
-    <button id="btnTop">📸 Capture TOP</button>
-    <button id="btnSide1" disabled>📸 Capture SIDE 1</button>
-    <button id="btnSide2" disabled>📸 Capture SIDE 2</button>
-    <button id="btnReset">🔄 Reset</button>
-  </div>
-
-  <canvas id="canvas"></canvas>
-
-  <div id="result">Result will appear here...</div>
-
-  <hr style="max-width:420px; margin:18px auto; opacity:0.4;" />
-
-  <!-- Wrapping Guide -->
-  <div style="max-width:420px; margin:0 auto;">
-    <h3 style="margin:10px 0;">Wrapping Guide</h3>
-
-    <select id="wrapMethod" style="padding:10px; border-radius:10px; width:100%; max-width:420px;">
-      <option value="japaneseB" selected>Japanese Fold (Corner Tuck + Lock)</option>
-      <option value="simpleA">Simple Fold (Coming Soon)</option>
-    </select>
+    <video id="video" autoplay playsinline></video>
 
     <div class="btns">
-      <button id="btnShowGuide">🎌 Show Wrapping Guide</button>
-      <button id="btnPrevStep" disabled>⬅ Prev</button>
-      <button id="btnNextStep" disabled>Next ➡</button>
+      <button id="btnTop">📸 TOP</button>
+      <button id="btnSide1" disabled>📸 SIDE 1</button>
+      <button id="btnSide2" disabled>📸 SIDE 2</button>
+      <button id="btnReset" class="secondary">Reset</button>
+    </div>
+
+    <!-- Photo + overlay (2 canvases stacked) -->
+    <div class="canvasWrap">
+      <canvas id="canvasPhoto"></canvas>
+      <canvas id="canvasOverlay"></canvas>
+    </div>
+
+    <div id="result" class="card">Result will appear here...</div>
+
+    <div class="card">
+      <h3>Wrapping Guide</h3>
+      <select id="wrapMethod">
+        <option value="japaneseB" selected>Japanese Fold (Corner Tuck + Lock)</option>
+      </select>
+
+      <div class="btns">
+        <button id="btnShowGuide">Show Guide</button>
+        <button id="btnPrevStep" disabled class="secondary">Prev</button>
+        <button id="btnNextStep" disabled class="secondary">Next</button>
+      </div>
+
+      <p class="small">Tip: For best results, keep marker visible in all photos.</p>
     </div>
   </div>
-
-  <p class="footer">
-    ✅ After measurement, click “Show Wrapping Guide”.
-  </p>
 </body>
 </html>
