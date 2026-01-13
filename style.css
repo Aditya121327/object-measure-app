@@ -1,41 +1,55 @@
 body {
-  text-align: center;
+  margin: 0;
+  background: #f4f6fb;
   font-family: Arial, sans-serif;
-  padding: 12px;
-  background: #f7f7f7;
+  text-align: center;
 }
+
+.app {
+  max-width: 480px;
+  margin: auto;
+  padding: 14px;
+}
+
+h2 { margin: 8px 0 2px; }
+.subtitle { margin: 0 0 12px; font-size: 13px; opacity: 0.8; }
 
 .note {
   font-size: 14px;
-  max-width: 420px;
-  margin: 10px auto 12px auto;
-  opacity: 0.9;
+  background: #fff;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #e2e2e2;
 }
 
-video, canvas {
+video {
   width: 100%;
-  max-width: 420px;
-  border-radius: 12px;
-  border: 2px solid #ccc;
+  border-radius: 16px;
+  margin-top: 10px;
+  border: 2px solid #ddd;
   background: black;
 }
 
 .btns {
-  margin: 12px 0;
+  margin: 10px 0;
   display: flex;
   justify-content: center;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 10px;
 }
 
 button {
   padding: 12px 14px;
-  font-size: 15px;
   border: none;
-  border-radius: 10px;
-  background: #007bff;
+  border-radius: 12px;
+  font-size: 14px;
+  background: #2b6fff;
   color: white;
   cursor: pointer;
+}
+
+button.secondary {
+  background: #444;
 }
 
 button:disabled {
@@ -43,36 +57,87 @@ button:disabled {
   cursor: not-allowed;
 }
 
-button:active {
-  transform: scale(0.98);
-}
-
-#btnReset {
-  background: #444;
-}
-
-#result {
-  font-size: 16px;
-  font-weight: bold;
-  white-space: pre-line;
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: 10px;
+.card {
   background: white;
-  max-width: 420px;
-  margin-left: auto;
-  margin-right: auto;
-  border: 1px solid #ddd;
+  border: 1px solid #e2e2e2;
+  border-radius: 16px;
+  padding: 12px;
+  margin-top: 12px;
+  white-space: pre-line;
+  font-weight: bold;
 }
 
-.footer {
-  margin-top: 12px;
-  font-size: 13px;
+.small {
+  font-size: 12px;
   opacity: 0.7;
+  margin-top: 6px;
+  font-weight: normal;
 }
 
 select {
-  border: 1px solid #ccc;
-  font-size: 15px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  margin-top: 8px;
 }
-hr { border: none; border-top: 1px solid #ddd; }
+
+.canvasWrap {
+  position: relative;
+  width: 100%;
+  margin-top: 12px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 2px solid #ddd;
+  background: black;
+}
+
+#canvasPhoto, #canvasOverlay {
+  width: 100%;
+  display: block;
+}
+
+#canvasOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+/* Stepper */
+.stepper {
+  margin: 12px auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.step {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  border: 2px solid #bbb;
+  background: #fff;
+  font-weight: bold;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  font-size: 14px;
+}
+.step span {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.step.active {
+  border-color: #2b6fff;
+  background: #eaf0ff;
+}
+
+.line {
+  width: 40px;
+  height: 4px;
+  background: #bbb;
+  border-radius: 8px;
+}
