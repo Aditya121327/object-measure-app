@@ -6,14 +6,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <link rel="stylesheet" href="style.css" />
+
+  <!-- OpenCV -->
   <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady();"></script>
   <script src="script.js" defer></script>
 </head>
 
 <body>
   <div class="app">
-    <h2>WrapIt</h2>
-    <p class="subtitle">Measure object & guide Japanese gift wrap (Prototype)</p>
+    <header class="topbar">
+      <div>
+        <h1>WrapIt</h1>
+        <p>Measure + Wrapping Plan (Prototype)</p>
+      </div>
+      <span class="badge">v1.0</span>
+    </header>
 
     <!-- Stepper -->
     <div class="stepper">
@@ -21,12 +28,12 @@
       <div class="line"></div>
       <div class="step" id="step2">2<br><span>Measure</span></div>
       <div class="line"></div>
-      <div class="step" id="step3">3<br><span>Wrap</span></div>
+      <div class="step" id="step3">3<br><span>Wrap Plan</span></div>
     </div>
 
-    <p class="note" id="instructions">
+    <div class="card note" id="instructions">
       STEP 1: Keep marker near object and capture TOP view.
-    </p>
+    </div>
 
     <video id="video" autoplay playsinline></video>
 
@@ -37,28 +44,43 @@
       <button id="btnReset" class="secondary">Reset</button>
     </div>
 
-    <!-- Photo + overlay (2 canvases stacked) -->
+    <!-- Photo + overlay -->
     <div class="canvasWrap">
       <canvas id="canvasPhoto"></canvas>
       <canvas id="canvasOverlay"></canvas>
     </div>
 
-    <div id="result" class="card">Result will appear here...</div>
+    <div class="card" id="result">Result will appear here...</div>
 
+    <!-- Wrap Guide Panel -->
     <div class="card">
-      <h3>Wrapping Guide</h3>
+      <h2 class="sectionTitle">Wrapping Guide</h2>
+
+      <label class="label">Choose wrap method:</label>
       <select id="wrapMethod">
-        <option value="japaneseB" selected>Japanese Fold (Corner Tuck + Lock)</option>
+        <option value="japaneseB" selected>Method B: Japanese Fold (Corner Tuck + Lock)</option>
+        <option value="simpleA">Method A: Simple Fold (Fast & Easy)</option>
       </select>
 
       <div class="btns">
-        <button id="btnShowGuide">Show Guide</button>
-        <button id="btnPrevStep" disabled class="secondary">Prev</button>
-        <button id="btnNextStep" disabled class="secondary">Next</button>
+        <button id="btnShowGuide">✨ Generate Guide</button>
+        <button id="btnPrevStep" class="secondary" disabled>Prev</button>
+        <button id="btnNextStep" class="secondary" disabled>Next</button>
       </div>
 
-      <p class="small">Tip: For best results, keep marker visible in all photos.</p>
+      <div class="btns">
+        <button id="btnDownloadGuide" class="secondary" disabled>⬇ Download Guide PNG</button>
+        <button id="btnDownloadSummary" class="secondary" disabled>⬇ Download Summary PNG</button>
+      </div>
+
+      <p class="small">
+        Tip: For accuracy, keep the marker visible in every photo and avoid shadows.
+      </p>
     </div>
+
+    <footer class="footer">
+      Built as a prototype using OpenCV.js + Canvas overlays.
+    </footer>
   </div>
 </body>
 </html>
