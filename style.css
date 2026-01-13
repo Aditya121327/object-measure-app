@@ -148,6 +148,10 @@ select {
   opacity: 0.7;
 }
 
+#canvasTemplate {
+  background: white;
+}
+
 /* Stepper */
 .stepper {
   margin: 10px auto 0;
