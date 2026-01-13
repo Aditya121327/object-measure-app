@@ -2,11 +2,13 @@ let video;
 let canvasPhoto, canvasOverlay;
 let ctxPhoto, ctxOverlay;
 
+let canvasTemplate, ctxTemplate;
+
 let resultBox, instructions;
 let btnTop, btnSide1, btnSide2, btnCleanTop, btnReset;
 let btnShowGuide, btnPrevStep, btnNextStep;
 let btnDownloadGuide, btnDownloadSummary;
-let wrapMethod;
+let wrapMethod, guideView;
 
 let step1, step2, step3;
 
@@ -29,10 +31,10 @@ let side1Data = null;
 let side2Data = null;
 let finalDims = null;
 
-// Captured images
-let topMarkerImage = null;     // TOP with marker
-let cleanTopImage = null;      // TOP without marker
-let cleanTopObjectRect = null; // object bounding rect detected in clean photo
+// Images
+let topMarkerImage = null;
+let cleanTopImage = null;
+let cleanTopObjectRect = null;
 
 let guideStep = 0;
 let guideReady = false;
@@ -49,6 +51,9 @@ async function init() {
   canvasOverlay = document.getElementById("canvasOverlay");
   ctxPhoto = canvasPhoto.getContext("2d");
   ctxOverlay = canvasOverlay.getContext("2d");
+
+  canvasTemplate = document.getElementById("canvasTemplate");
+  ctxTemplate = canvasTemplate.getContext("2d");
 
   resultBox = document.getElementById("result");
   instructions = document.getElementById("instructions");
@@ -67,6 +72,7 @@ async function init() {
   btnDownloadSummary = document.getElementById("btnDownloadSummary");
 
   wrapMethod = document.getElementById("wrapMethod");
+  guideView = document.getElementById("guideView");
 
   step1 = document.getElementById("step1");
   step2 = document.getElementById("step2");
@@ -133,6 +139,11 @@ function resetAll() {
 
   updateStepper(1);
   instructions.innerText = "STEP 1: Keep marker near object and capture TOP view.";
+
+  canvasTemplate.style.display = "none";
+  canvasPhoto.style.display = "block";
+  canvasOverlay.style.display = "block";
+
   clearOverlay();
   showStatus("🔄 Reset done. Capture TOP (marker) view first.");
 }
@@ -188,7 +199,7 @@ function captureMeasurePhoto(mode) {
 
     if (finalDims) {
       updateStepper(2);
-      btnCleanTop.disabled = false; // enable clean capture
+      btnCleanTop.disabled = false;
       guideReady = true;
       btnDownloadGuide.disabled = false;
       btnDownloadSummary.disabled = false;
@@ -206,29 +217,28 @@ function computeFinal() {
   finalDims = { L, W, H };
 }
 
-// -------------------- CLEAN TOP CAPTURE (NO MARKER) --------------------
+// -------------------- CLEAN TOP CAPTURE --------------------
 function captureCleanTop() {
   if (!cvReady) return showStatus("⏳ OpenCV loading...");
 
   clearOverlay();
   cleanTopImage = captureFrameToCanvas();
 
-  showStatus("⏳ Detecting object from CLEAN TOP...");
+  showStatus("⏳ Detecting object boundary from CLEAN TOP...");
 
   setTimeout(() => {
     cleanTopObjectRect = detectObjectRectFromCleanTop();
     if (!cleanTopObjectRect) {
-      showStatus("⚠️ Clean object boundary not detected. Try better background/lighting.");
+      showStatus("⚠️ Clean object boundary not detected. Try plain background + better lighting.");
       return;
     }
 
-    // show detected rect
     clearOverlay();
     drawRect(cleanTopObjectRect, "rgba(255,200,0,0.95)", 6);
     drawText("Object detected (CLEAN TOP)", cleanTopObjectRect.x + 10, cleanTopObjectRect.y - 10);
 
     instructions.innerText = "✅ Clean Top captured. Now generate wrapping guide.";
-    showStatus("✅ CLEAN TOP captured successfully.\nNow click Generate Cuboid Guide.");
+    showStatus("✅ CLEAN TOP captured successfully. Generate guide now.");
   }, 80);
 }
 
@@ -307,9 +317,8 @@ function analyzeMarkerObject() {
   return { wCm, hCm };
 }
 
-// -------------------- OPENCV: DETECT OBJECT RECT FROM CLEAN TOP --------------------
+// -------------------- OPENCV: DETECT CLEAN OBJECT RECT --------------------
 function detectObjectRectFromCleanTop() {
-  // Replace canvasPhoto with clean image temporarily
   if (!cleanTopImage) return null;
 
   ctxPhoto.putImageData(cleanTopImage, 0, 0);
@@ -325,7 +334,6 @@ function detectObjectRectFromCleanTop() {
 
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
-
   cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
   if (contours.size() < 1) {
@@ -333,7 +341,6 @@ function detectObjectRectFromCleanTop() {
     return null;
   }
 
-  // choose biggest contour as object
   let bestRect = null;
   let bestArea = 0;
 
@@ -341,10 +348,7 @@ function detectObjectRectFromCleanTop() {
     let cnt = contours.get(i);
     let rect = cv.boundingRect(cnt);
     let area = rect.width * rect.height;
-
-    // ignore small noise
     if (area < 6000) continue;
-
     if (area > bestArea) {
       bestArea = area;
       bestRect = rect;
@@ -355,7 +359,6 @@ function detectObjectRectFromCleanTop() {
 
   if (!bestRect) return null;
 
-  // slight padding
   const pad = 10;
   bestRect.x = Math.max(0, bestRect.x - pad);
   bestRect.y = Math.max(0, bestRect.y - pad);
@@ -388,45 +391,60 @@ function changeGuideStep(delta) {
 function drawGuideStep() {
   if (!finalDims) return;
 
-  // Prefer clean top if available
-  if (cleanTopImage) ctxPhoto.putImageData(cleanTopImage, 0, 0);
-  else if (topMarkerImage) ctxPhoto.putImageData(topMarkerImage, 0, 0);
-
-  clearOverlay();
+  const view = guideView.value;
 
   const { L, W, H } = finalDims;
   const paper = getRequiredPaper(L, W, H);
-
   const bestSheet = getBestIndianWrap(paper.paperL, paper.paperW);
+
   const tape = estimateTape(L, W, H);
   const score = materialSaverScore(bestSheet?.wastePct ?? 50);
 
   const stepsB = [
-    "Step 1: Place cuboid at center of paper.",
-    "Step 2: Fold left & right sides inward (H).",
-    "Step 3: Fold corner triangles & tuck.",
-    "Step 4: Fold bottom flap upward (H).",
-    "Step 5: Fold top flap downward and lock tuck.",
-    "Step 6: Tape at marked points (minimum)."
+    "Step 1: Cut paper to required size and keep box at center.",
+    "Step 2: Fold LEFT and RIGHT flaps inward.",
+    "Step 3: Fold corner triangles and tuck inside.",
+    "Step 4: Fold BOTTOM flap upward.",
+    "Step 5: Fold TOP flap downward and lock.",
+    "Step 6: Apply tape only at marked points."
   ];
 
   const stepsA = [
-    "Step 1: Place cuboid at center.",
-    "Step 2: Fold left side over cuboid.",
-    "Step 3: Fold right side overlap.",
-    "Step 4: Fold bottom flap upward.",
-    "Step 5: Fold top flap downward.",
-    "Step 6: Tape seam and edge."
+    "Step 1: Cut paper and keep box at center.",
+    "Step 2: Fold LEFT flap inward.",
+    "Step 3: Fold RIGHT flap inward (overlap).",
+    "Step 4: Fold BOTTOM flap upward.",
+    "Step 5: Fold TOP flap downward.",
+    "Step 6: Tape at seam + 1 edge."
   ];
 
   const steps = wrapMethod.value === "japaneseB" ? stepsB : stepsA;
 
-  drawLabelBox("Cuboid Wrapping Guide", steps[guideStep]);
+  if (view === "template") {
+    // TEMPLATE VIEW
+    canvasTemplate.style.display = "block";
+    canvasPhoto.style.display = "none";
+    canvasOverlay.style.display = "none";
 
-  // IMPORTANT: fit overlay on object size in photo
-  // if we have clean object rect => use it
-  // else use center placement fallback
-  drawCuboidOverlayOnPhoto(L, W, H, guideStep, wrapMethod.value);
+    canvasTemplate.width = 900;
+    canvasTemplate.height = 650;
+
+    ctxTemplate.clearRect(0, 0, canvasTemplate.width, canvasTemplate.height);
+
+    drawCuboidTemplate(L, W, H, guideStep, wrapMethod.value);
+  } else {
+    // OVERLAY VIEW
+    canvasTemplate.style.display = "none";
+    canvasPhoto.style.display = "block";
+    canvasOverlay.style.display = "block";
+
+    if (cleanTopImage) ctxPhoto.putImageData(cleanTopImage, 0, 0);
+    else if (topMarkerImage) ctxPhoto.putImageData(topMarkerImage, 0, 0);
+
+    clearOverlay();
+    drawLabelBox("Cuboid Wrapping Guide", steps[guideStep]);
+    drawCuboidOverlayOnPhoto(L, W, H, guideStep, wrapMethod.value);
+  }
 
   let sheetText = bestSheet
     ? `Best sheet: ${bestSheet.name} (${bestSheet.w}×${bestSheet.h} cm), Waste ~${bestSheet.wastePct.toFixed(1)}%`
@@ -443,7 +461,111 @@ function drawGuideStep() {
   );
 }
 
-// -------------------- OVERLAY FITTED TO OBJECT --------------------
+// -------------------- TEMPLATE DRAW --------------------
+function drawCuboidTemplate(L, W, H, step, method) {
+  const g = ctxTemplate;
+  const cw = canvasTemplate.width;
+  const ch = canvasTemplate.height;
+
+  g.fillStyle = "#ffffff";
+  g.fillRect(0, 0, cw, ch);
+
+  g.fillStyle = "#2b6fff";
+  g.fillRect(0, 0, cw, 80);
+  g.fillStyle = "#ffffff";
+  g.font = "bold 28px Arial";
+  g.fillText("WrapIt - Cuboid Net Template", 22, 50);
+
+  g.fillStyle = "#111";
+  g.font = "18px Arial";
+  g.fillText(`Object: L=${L.toFixed(1)} cm, W=${W.toFixed(1)} cm, H=${H.toFixed(1)} cm`, 22, 120);
+
+  // net proportions
+  const baseW = cw * 0.42;
+  const baseH = baseW * (W / L);
+  const flap = Math.min(baseW, baseH) * 0.35;
+
+  const x = (cw - baseW) / 2;
+  const y = (ch - baseH) / 2 + 40;
+
+  const base = { x, y, w: baseW, h: baseH };
+  const left = { x: x - flap, y, w: flap, h: baseH };
+  const right = { x: x + baseW, y, w: flap, h: baseH };
+  const top = { x, y: y - flap, w: baseW, h: flap };
+  const bottom = { x, y: y + baseH, w: baseW, h: flap };
+
+  function rect(r, stroke, fill) {
+    if (fill) {
+      g.fillStyle = fill;
+      g.fillRect(r.x, r.y, r.w, r.h);
+    }
+    g.strokeStyle = stroke;
+    g.lineWidth = 4;
+    g.strokeRect(r.x, r.y, r.w, r.h);
+  }
+
+  rect(base, "#007bff", "rgba(0,123,255,0.10)");
+  g.fillStyle = "#000";
+  g.font = "bold 18px Arial";
+  g.fillText("BASE (L×W)", base.x + 15, base.y + 30);
+
+  const sideFill = step >= 1 ? "rgba(0,255,255,0.16)" : "rgba(0,0,0,0.04)";
+  const bottomFill = step >= 3 ? "rgba(255,255,0,0.18)" : "rgba(0,0,0,0.04)";
+  const topFill = step >= 4 ? "rgba(255,255,0,0.18)" : "rgba(0,0,0,0.04)";
+
+  rect(left, "#00aaaa", sideFill);
+  rect(right, "#00aaaa", sideFill);
+  rect(bottom, "#aaaa00", bottomFill);
+  rect(top, "#aaaa00", topFill);
+
+  g.fillStyle = "#333";
+  g.font = "16px Arial";
+  g.fillText("LEFT FLAP (H)", left.x + 10, left.y + 25);
+  g.fillText("RIGHT FLAP (H)", right.x + 10, right.y + 25);
+  g.fillText("TOP FLAP (H)", top.x + 10, top.y + 25);
+  g.fillText("BOTTOM FLAP (H)", bottom.x + 10, bottom.y + 25);
+
+  if (method === "japaneseB" && step >= 2) {
+    g.strokeStyle = "orange";
+    g.lineWidth = 4;
+
+    function tri(ax, ay, bx, by, cx, cy) {
+      g.beginPath();
+      g.moveTo(ax, ay);
+      g.lineTo(bx, by);
+      g.lineTo(cx, cy);
+      g.closePath();
+      g.stroke();
+    }
+
+    tri(base.x, base.y, base.x - flap * 0.5, base.y, base.x, base.y - flap * 0.5);
+    tri(base.x + base.w, base.y, base.x + base.w + flap * 0.5, base.y, base.x + base.w, base.y - flap * 0.5);
+    tri(base.x, base.y + base.h, base.x - flap * 0.5, base.y + base.h, base.x, base.y + base.h + flap * 0.5);
+    tri(base.x + base.w, base.y + base.h, base.x + base.w + flap * 0.5, base.y + base.h, base.x + base.w, base.y + base.h + flap * 0.5);
+
+    g.fillStyle = "orange";
+    g.fillText("Corner Tucks", base.x + base.w + 25, base.y + base.h + 30);
+  }
+
+  if (step >= 5) {
+    g.fillStyle = "red";
+    g.beginPath();
+    g.arc(base.x + base.w / 2, base.y - 18, 10, 0, Math.PI * 2);
+    g.fill();
+    g.beginPath();
+    g.arc(base.x + base.w / 2, base.y + base.h + 18, 10, 0, Math.PI * 2);
+    g.fill();
+
+    g.fillStyle = "#000";
+    g.fillText("Tape Here", base.x + base.w / 2 + 18, base.y - 14);
+  }
+
+  g.fillStyle = "#000";
+  g.font = "bold 20px Arial";
+  g.fillText(`CURRENT: Step ${step + 1}`, 22, ch - 30);
+}
+
+// -------------------- OVERLAY ON PHOTO --------------------
 function drawCuboidOverlayOnPhoto(L, W, H, step, method) {
   const cw = canvasOverlay.width;
   const ch = canvasOverlay.height;
@@ -451,7 +573,6 @@ function drawCuboidOverlayOnPhoto(L, W, H, step, method) {
   let base;
 
   if (cleanTopObjectRect) {
-    // use detected object bounds
     base = {
       x: cleanTopObjectRect.x,
       y: cleanTopObjectRect.y,
@@ -459,7 +580,6 @@ function drawCuboidOverlayOnPhoto(L, W, H, step, method) {
       h: cleanTopObjectRect.height
     };
   } else {
-    // fallback center box
     const pad = Math.min(cw, ch) * 0.2;
     const bw = (cw - 2 * pad) * 0.5;
     const bh = bw * (W / L);
@@ -471,7 +591,6 @@ function drawCuboidOverlayOnPhoto(L, W, H, step, method) {
     };
   }
 
-  // flap thickness proportional to base
   const flap = Math.min(base.w, base.h) * 0.35;
 
   const leftFlap = { x: base.x - flap, y: base.y, w: flap, h: base.h };
@@ -479,47 +598,36 @@ function drawCuboidOverlayOnPhoto(L, W, H, step, method) {
   const topFlap = { x: base.x, y: base.y - flap, w: base.w, h: flap };
   const bottomFlap = { x: base.x, y: base.y + base.h, w: base.w, h: flap };
 
-  // base outline
   drawBoxRect(base, "rgba(0,120,255,0.95)", 6);
   drawText("Object Base", base.x + 10, base.y - 10);
 
-  // fold sides
   if (step >= 1) {
     shadeRegion(leftFlap, "rgba(0,255,255,0.14)");
     shadeRegion(rightFlap, "rgba(0,255,255,0.14)");
     drawArrow(leftFlap.x + 10, leftFlap.y + leftFlap.h / 2, base.x + 10, base.y + base.h / 2);
     drawArrow(rightFlap.x + rightFlap.w - 10, rightFlap.y + rightFlap.h / 2, base.x + base.w - 10, base.y + base.h / 2);
-    drawText("Fold sides", base.x + base.w + 12, base.y + 24);
   }
 
-  // corner tucks for Japanese
   if (method === "japaneseB" && step >= 2) {
     drawCornerTriangle(base.x, base.y, flap * 0.55, "TL");
     drawCornerTriangle(base.x + base.w, base.y, flap * 0.55, "TR");
     drawCornerTriangle(base.x, base.y + base.h, flap * 0.55, "BL");
     drawCornerTriangle(base.x + base.w, base.y + base.h, flap * 0.55, "BR");
-    drawText("Corner tuck", base.x + 12, base.y + base.h + 28);
   }
 
-  // fold bottom
   if (step >= 3) {
     shadeRegion(bottomFlap, "rgba(255,255,0,0.14)");
     drawArrow(bottomFlap.x + bottomFlap.w / 2, bottomFlap.y + bottomFlap.h - 10, base.x + base.w / 2, base.y + base.h - 10);
-    drawText("Fold up", base.x + base.w / 2 - 22, bottomFlap.y + bottomFlap.h - 18);
   }
 
-  // fold top
   if (step >= 4) {
     shadeRegion(topFlap, "rgba(255,255,0,0.14)");
     drawArrow(topFlap.x + topFlap.w / 2, topFlap.y + 10, base.x + base.w / 2, base.y + 10);
-    drawText("Fold down", base.x + base.w / 2 - 32, topFlap.y + 22);
   }
 
-  // tape points
   if (step >= 5) {
     drawDot(base.x + base.w / 2, base.y - 24);
     drawDot(base.x + base.w / 2, base.y + base.h + 24);
-    drawText("Tape", base.x + base.w / 2 - 18, base.y - 34);
   }
 }
 
@@ -541,7 +649,6 @@ function getRequiredPaper(L, W, H) {
   return { paperL, paperW, margin };
 }
 
-// -------------------- MARKET HELPERS --------------------
 function getBestIndianWrap(reqL, reqW) {
   let best = null;
 
@@ -566,8 +673,14 @@ function getBestIndianWrap(reqL, reqW) {
 // -------------------- DOWNLOADS --------------------
 function downloadGuidePNG() {
   if (!guideReady) return;
+
+  if (guideView.value === "template") {
+    downloadCanvas(canvasTemplate, "wrapit_template_guide.png");
+    return;
+  }
+
   const merged = mergeCanvases();
-  downloadCanvas(merged, "wrapit_clean_overlay_guide.png");
+  downloadCanvas(merged, "wrapit_overlay_guide.png");
 }
 
 function downloadSummaryPNG() {
@@ -612,7 +725,7 @@ function downloadSummaryPNG() {
 
   g.font = "18px Arial";
   g.fillStyle = "#444";
-  g.fillText(`Prototype: marker-calibrated 3-view measurement + clean overlay guide.`, 24, 465);
+  g.fillText(`Prototype: marker-calibrated 3-view measurement + template/overlay guide.`, 24, 465);
 
   downloadCanvas(c, "wrapit_summary.png");
 }
@@ -650,7 +763,7 @@ function showProgress() {
   if (finalDims) {
     const { L, W, H } = finalDims;
     msg += `🎯 FINAL DIMENSIONS\nL×W×H = ${L.toFixed(2)} × ${W.toFixed(2)} × ${H.toFixed(2)} cm\n\n`;
-    msg += `✅ Next: Capture CLEAN TOP (no marker) for best overlay.\n`;
+    msg += `✅ Next: Capture CLEAN TOP (no marker) for best guide.\n`;
   }
 
   showStatus(msg);
